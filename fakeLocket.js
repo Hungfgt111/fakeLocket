@@ -55,7 +55,7 @@ function saveDb() {
 // 1. Lấy danh sách bài đăng (Lọc theo bạn bè)
 app.get('/api/posts', (req, res) => {
     const { username } = req.query;
-    
+
     let allowedAuthors = [username]; // Luôn thấy bài của chính mình
     if (username && users[username]) {
         allowedAuthors = allowedAuthors.concat(users[username].friends);
@@ -65,7 +65,7 @@ app.get('/api/posts', (req, res) => {
     const filteredPosts = posts.filter(p => allowedAuthors.includes(p.author));
     // Sắp xếp bài đăng mới nhất lên đầu tiên
     const sortedPosts = filteredPosts.sort((a, b) => b.timestamp - a.timestamp);
-    
+
     res.json({ success: true, data: sortedPosts });
 });
 
@@ -168,7 +168,7 @@ app.post('/api/users/login', (req, res) => {
     const { username, password } = req.body;
     if (!username) return res.status(400).json({ success: false, message: 'Thiếu tên hiển thị' });
     if (!password) return res.status(400).json({ success: false, message: 'Thiếu mật khẩu' });
-    
+
     if (!users[username]) {
         // Tự động đăng ký nếu tài khoản mới
         users[username] = { password: password, friends: [] };
@@ -177,12 +177,12 @@ app.post('/api/users/login', (req, res) => {
         const pendingCount = friendRequests.filter(r => r.to === username).length;
         return res.json({ success: true, username, friends: [], pendingCount, message: "Tạo tài khoản mới thành công!" });
     }
-    
+
     // Nếu tài khoản đã tồn tại, kiểm tra mật khẩu
     if (users[username].password !== password) {
         return res.status(401).json({ success: false, message: 'Sai mật khẩu tài khoản! Vui lòng nhập lại.' });
     }
-    
+
     // Đếm số lời mời đang chờ
     const pendingCount = friendRequests.filter(r => r.to === username).length;
     res.json({ success: true, username, friends: users[username].friends, pendingCount });
@@ -191,22 +191,22 @@ app.post('/api/users/login', (req, res) => {
 // Gửi lời mời kết bạn
 app.post('/api/users/friend/request', (req, res) => {
     const { username, friendName, message } = req.body;
-    
+
     if (!users[username]) return res.status(404).json({ success: false, message: "Bạn chưa đăng nhập!" });
     if (!users[friendName]) return res.status(404).json({ success: false, message: "Không tìm thấy người này (họ chưa từng mở ứng dụng)" });
     if (username === friendName) return res.status(400).json({ success: false, message: "Không thể tự kết bạn với chính mình" });
-    
+
     // Kiểm tra đã là bạn bè chưa
     if (users[username].friends.includes(friendName)) {
         return res.status(400).json({ success: false, message: `Bạn và ${friendName} đã là bạn bè rồi!` });
     }
-    
+
     // Kiểm tra đã gửi lời mời trước đó chưa
     const existingRequest = friendRequests.find(r => r.from === username && r.to === friendName);
     if (existingRequest) {
         return res.status(400).json({ success: false, message: "Bạn đã gửi lời mời rồi, hãy đợi họ chấp nhận!" });
     }
-    
+
     // Kiểm tra nếu đối phương đã gửi lời mời cho mình → tự động chấp nhận
     const reverseRequest = friendRequests.find(r => r.from === friendName && r.to === username);
     if (reverseRequest) {
@@ -218,7 +218,7 @@ app.post('/api/users/friend/request', (req, res) => {
         console.log(`[FRIEND] ${username} và ${friendName} đã thành bạn bè (tự động chấp nhận lời mời ngược)`);
         return res.json({ success: true, message: `${friendName} cũng đã gửi lời mời cho bạn. Hai bạn giờ là bạn bè!`, friends: users[username].friends });
     }
-    
+
     friendRequests.push({ from: username, to: friendName, message: message || '', timestamp: Date.now() });
     saveDb();
     console.log(`[REQUEST] ${username} gửi lời mời kết bạn tới ${friendName} với lời nhắn: "${message || ''}"`);
@@ -239,18 +239,18 @@ app.get('/api/users/:username/requests', (req, res) => {
 // Chấp nhận lời mời kết bạn
 app.post('/api/users/friend/accept', (req, res) => {
     const { username, fromUser } = req.body;
-    
+
     const reqIndex = friendRequests.findIndex(r => r.from === fromUser && r.to === username);
     if (reqIndex === -1) {
         return res.status(404).json({ success: false, message: "Không tìm thấy lời mời này!" });
     }
-    
+
     // Xóa lời mời và thêm bạn bè 2 chiều
     friendRequests.splice(reqIndex, 1);
     if (!users[username].friends.includes(fromUser)) users[username].friends.push(fromUser);
     if (users[fromUser] && !users[fromUser].friends.includes(username)) users[fromUser].friends.push(username);
     saveDb();
-    
+
     console.log(`[ACCEPT] ${username} chấp nhận lời mời từ ${fromUser}`);
     res.json({ success: true, message: `Đã chấp nhận! Bạn và ${fromUser} giờ là bạn bè.`, friends: users[username].friends });
 });
@@ -258,10 +258,10 @@ app.post('/api/users/friend/accept', (req, res) => {
 // Từ chối lời mời kết bạn
 app.post('/api/users/friend/reject', (req, res) => {
     const { username, fromUser } = req.body;
-    
+
     friendRequests = friendRequests.filter(r => !(r.from === fromUser && r.to === username));
     saveDb();
-    
+
     console.log(`[REJECT] ${username} từ chối lời mời từ ${fromUser}`);
     res.json({ success: true, message: `Đã từ chối lời mời từ ${fromUser}.` });
 });
@@ -293,20 +293,20 @@ app.get('/api/admin/users', (req, res) => {
 app.delete('/api/admin/users/:username', (req, res) => {
     const { username } = req.params;
     if (!users[username]) return res.status(404).json({ success: false, message: 'User không tồn tại!' });
-    
+
     // Xóa user khỏi db
     delete users[username];
-    
+
     // Xóa user khỏi danh sách bạn bè của người khác
     Object.keys(users).forEach(u => {
         users[u].friends = users[u].friends.filter(f => f !== username);
     });
-    
+
     // Xóa toàn bộ bài đăng của user
     posts = posts.filter(p => p.author !== username);
-    
+
     saveDb();
-    
+
     console.log(`[ADMIN] Đã xóa toàn bộ dữ liệu của người dùng: ${username}`);
     res.json({ success: true, message: `Đã xóa ${username} thành công!` });
 });
