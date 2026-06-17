@@ -133,40 +133,99 @@ app.delete('/api/posts/:id', (req, res) => {
 });
 
 // ==========================================
-// API USER & BẠN BÈ
+// API USER & BẠN BÈ (HỆ THỐNG LỜI MỜI)
 // ==========================================
+
+// Lời mời kết bạn đang chờ xử lý
+// Cấu trúc: [{ from: "nam", to: "nu", timestamp }]
+let friendRequests = [];
 
 // Đăng nhập / Khởi tạo User
 app.post('/api/users/login', (req, res) => {
     const { username } = req.body;
     if (!username) return res.status(400).json({ success: false, message: 'Thiếu tên hiển thị' });
     
-    // Nếu chưa có user thì tạo mới
     if (!users[username]) {
         users[username] = { friends: [] };
         console.log(`[USER] Tạo mới: ${username}`);
     }
-    res.json({ success: true, username, friends: users[username].friends });
+    
+    // Đếm số lời mời đang chờ
+    const pendingCount = friendRequests.filter(r => r.to === username).length;
+    res.json({ success: true, username, friends: users[username].friends, pendingCount });
 });
 
-// Thêm bạn bè
-app.post('/api/users/friend', (req, res) => {
+// Gửi lời mời kết bạn
+app.post('/api/users/friend/request', (req, res) => {
     const { username, friendName } = req.body;
     
     if (!users[username]) return res.status(404).json({ success: false, message: "Bạn chưa đăng nhập!" });
     if (!users[friendName]) return res.status(404).json({ success: false, message: "Không tìm thấy người này (họ chưa từng mở ứng dụng)" });
     if (username === friendName) return res.status(400).json({ success: false, message: "Không thể tự kết bạn với chính mình" });
     
-    // Kết bạn 2 chiều
-    if (!users[username].friends.includes(friendName)) {
-        users[username].friends.push(friendName);
-    }
-    if (!users[friendName].friends.includes(username)) {
-        users[friendName].friends.push(username);
+    // Kiểm tra đã là bạn bè chưa
+    if (users[username].friends.includes(friendName)) {
+        return res.status(400).json({ success: false, message: `Bạn và ${friendName} đã là bạn bè rồi!` });
     }
     
-    console.log(`[FRIEND] ${username} và ${friendName} đã thành bạn bè`);
-    res.json({ success: true, message: `Đã kết bạn với ${friendName}!`, friends: users[username].friends });
+    // Kiểm tra đã gửi lời mời trước đó chưa
+    const existingRequest = friendRequests.find(r => r.from === username && r.to === friendName);
+    if (existingRequest) {
+        return res.status(400).json({ success: false, message: "Bạn đã gửi lời mời rồi, hãy đợi họ chấp nhận!" });
+    }
+    
+    // Kiểm tra nếu đối phương đã gửi lời mời cho mình → tự động chấp nhận
+    const reverseRequest = friendRequests.find(r => r.from === friendName && r.to === username);
+    if (reverseRequest) {
+        // Chấp nhận luôn
+        friendRequests = friendRequests.filter(r => !(r.from === friendName && r.to === username));
+        if (!users[username].friends.includes(friendName)) users[username].friends.push(friendName);
+        if (!users[friendName].friends.includes(username)) users[friendName].friends.push(username);
+        console.log(`[FRIEND] ${username} và ${friendName} đã thành bạn bè (tự động chấp nhận lời mời ngược)`);
+        return res.json({ success: true, message: `${friendName} cũng đã gửi lời mời cho bạn. Hai bạn giờ là bạn bè!`, friends: users[username].friends });
+    }
+    
+    friendRequests.push({ from: username, to: friendName, timestamp: Date.now() });
+    console.log(`[REQUEST] ${username} gửi lời mời kết bạn tới ${friendName}`);
+    res.json({ success: true, message: `Đã gửi lời mời kết bạn tới ${friendName}! Đợi họ chấp nhận nhé.` });
+});
+
+// Lấy danh sách lời mời đang chờ (người khác gửi cho mình)
+app.get('/api/users/:username/requests', (req, res) => {
+    const { username } = req.params;
+    const pending = friendRequests.filter(r => r.to === username).map(r => ({
+        from: r.from,
+        timestamp: r.timestamp
+    }));
+    res.json({ success: true, requests: pending });
+});
+
+// Chấp nhận lời mời kết bạn
+app.post('/api/users/friend/accept', (req, res) => {
+    const { username, fromUser } = req.body;
+    
+    const reqIndex = friendRequests.findIndex(r => r.from === fromUser && r.to === username);
+    if (reqIndex === -1) {
+        return res.status(404).json({ success: false, message: "Không tìm thấy lời mời này!" });
+    }
+    
+    // Xóa lời mời và thêm bạn bè 2 chiều
+    friendRequests.splice(reqIndex, 1);
+    if (!users[username].friends.includes(fromUser)) users[username].friends.push(fromUser);
+    if (users[fromUser] && !users[fromUser].friends.includes(username)) users[fromUser].friends.push(username);
+    
+    console.log(`[ACCEPT] ${username} chấp nhận lời mời từ ${fromUser}`);
+    res.json({ success: true, message: `Đã chấp nhận! Bạn và ${fromUser} giờ là bạn bè.`, friends: users[username].friends });
+});
+
+// Từ chối lời mời kết bạn
+app.post('/api/users/friend/reject', (req, res) => {
+    const { username, fromUser } = req.body;
+    
+    friendRequests = friendRequests.filter(r => !(r.from === fromUser && r.to === username));
+    
+    console.log(`[REJECT] ${username} từ chối lời mời từ ${fromUser}`);
+    res.json({ success: true, message: `Đã từ chối lời mời từ ${fromUser}.` });
 });
 
 // Lấy danh sách bạn bè
@@ -272,15 +331,17 @@ const HTML_CONTENT = `<!DOCTYPE html>
     <!-- HEADER -->
     <header
         class="fixed top-0 left-0 right-0 z-50 bg-dark/90 backdrop-blur-md p-4 flex justify-between items-center border-b border-gray-800">
-        <!-- Nút Bạn Bè -->
-        <button onclick="openFriends()" class="text-white hover:text-brand transition">
+        <!-- Nút Bạn Bè (có badge thông báo) -->
+        <button onclick="openFriends()" class="text-white hover:text-brand transition relative">
             <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z">
                 </path>
             </svg>
+            <span id="friend-badge" class="hidden absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-xs font-bold flex items-center justify-center text-white">0</span>
         </button>
-        <h1 id="app-logo" onclick="handleLogoClick()" class="text-2xl font-bold text-brand tracking-wider select-none cursor-pointer">MOMENTS</h1>
+        <h1 id="app-logo" onclick="handleLogoClick()"
+            class="text-2xl font-bold text-brand tracking-wider select-none cursor-pointer">MOMENTS</h1>
         <!-- Nút Trò chơi Flappy Bird -->
         <button onclick="openGame()" class="text-brand hover:text-white transition">
             <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -383,11 +444,12 @@ const HTML_CONTENT = `<!DOCTYPE html>
             </div>
             <button onclick="closeAdmin()" class="p-3 bg-gray-800 rounded-full text-white active:scale-95 transition">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
+                    </path>
                 </svg>
             </button>
         </div>
-        
+
         <h3 class="text-gray-400 font-bold mb-4">DANH SÁCH THÀNH VIÊN (<span id="admin-user-count">0</span>)</h3>
         <div id="admin-users-list" class="space-y-3 overflow-y-auto pb-10">
             <!-- Danh sách user chèn vào đây -->
@@ -396,7 +458,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
     </div>
 
     <!-- MODAL BẠN BÈ -->
-    <div id="friends-modal" class="fixed inset-0 z-[70] bg-darker hidden flex-col p-6 pt-12">
+    <div id="friends-modal" class="fixed inset-0 z-[70] bg-darker hidden flex-col p-6 pt-12 overflow-y-auto">
         <div class="flex justify-between items-center mb-8">
             <div>
                 <h2 class="text-3xl font-black text-brand">BẠN BÈ</h2>
@@ -412,16 +474,20 @@ const HTML_CONTENT = `<!DOCTYPE html>
         </div>
 
         <div class="flex space-x-2 mb-8">
-            <input type="text" id="friend-input" placeholder="Nhập tên bạn bè..."
+            <input type="text" id="friend-input" placeholder="Nhập tên người muốn kết bạn..."
                 class="flex-1 bg-gray-800 text-white rounded-xl px-4 py-3 outline-none border border-gray-700 focus:border-brand transition">
-            <button onclick="addFriend()"
-                class="px-6 bg-brand text-black rounded-xl font-bold hover:bg-yellow-500 active:scale-95 transition">KẾT
-                BẠN</button>
+            <button onclick="sendFriendRequest()"
+                class="px-6 bg-brand text-black rounded-xl font-bold hover:bg-yellow-500 active:scale-95 transition">GỬI LỜI MỜI</button>
+        </div>
+
+        <!-- LỜi mời đang chờ -->
+        <h3 class="text-gray-400 font-bold mb-4">LỜI MỜI KẾT BẠN (<span id="request-count">0</span>)</h3>
+        <div id="requests-list" class="space-y-3 mb-8">
+            <p class="text-gray-600 text-sm italic">Không có lời mời nào.</p>
         </div>
 
         <h3 class="text-gray-400 font-bold mb-4">DANH SÁCH BẠN BÈ (<span id="friend-count">0</span>)</h3>
-        <div id="friends-list" class="space-y-3 overflow-y-auto pb-10">
-            <!-- Danh sách bạn bè chèn vào đây -->
+        <div id="friends-list" class="space-y-3 pb-10">
             <p class="text-gray-600 text-sm italic">Bạn chưa kết bạn với ai cả...</p>
         </div>
     </div>
@@ -586,7 +652,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
         // ==========================================
         // 2. LOGIC ĐĂNG NHẬP, BẠN BÈ VÀ ADMIN
         // ==========================================
-        
+
         // --- ADMIN LOGIC ---
         let logoClickCount = 0;
         let logoClickTimer;
@@ -594,7 +660,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
         function handleLogoClick() {
             logoClickCount++;
             clearTimeout(logoClickTimer);
-            
+
             if (logoClickCount === 3) {
                 openAdmin();
                 logoClickCount = 0;
@@ -624,7 +690,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
                 if (data.success) {
                     const listEl = document.getElementById('admin-users-list');
                     document.getElementById('admin-user-count').innerText = data.users.length;
-                    
+
                     if (data.users.length === 0) {
                         listEl.innerHTML = '<p class="text-gray-600 text-sm italic">Chưa có ai đăng ký cả...</p>';
                     } else {
@@ -710,12 +776,13 @@ const HTML_CONTENT = `<!DOCTYPE html>
             document.getElementById('friends-modal').classList.add('flex');
             document.getElementById('current-user-display').innerText = currentUser;
             loadFriends();
+            loadFriendRequests();
         }
 
         function closeFriends() {
             document.getElementById('friends-modal').classList.add('hidden');
             document.getElementById('friends-modal').classList.remove('flex');
-            loadPosts(); // Tải lại bảng tin vì có thể đã thêm bạn mới
+            loadPosts();
         }
 
         async function loadFriends() {
@@ -740,25 +807,102 @@ const HTML_CONTENT = `<!DOCTYPE html>
             } catch (err) { }
         }
 
-        async function addFriend() {
+        async function loadFriendRequests() {
+            try {
+                const res = await fetch(\`\${API_URL}/users/\${currentUser}/requests\`);
+                const data = await res.json();
+                if (data.success) {
+                    const listEl = document.getElementById('requests-list');
+                    const badge = document.getElementById('friend-badge');
+                    document.getElementById('request-count').innerText = data.requests.length;
+
+                    // Cập nhật badge thông báo
+                    if (data.requests.length > 0) {
+                        badge.classList.remove('hidden');
+                        badge.classList.add('flex');
+                        badge.innerText = data.requests.length;
+                    } else {
+                        badge.classList.add('hidden');
+                        badge.classList.remove('flex');
+                    }
+
+                    if (data.requests.length === 0) {
+                        listEl.innerHTML = '<p class="text-gray-600 text-sm italic">Không có lời mời nào.</p>';
+                    } else {
+                        listEl.innerHTML = data.requests.map(r => \`
+                            <div class="bg-gray-800 p-4 rounded-xl flex justify-between items-center">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center font-bold text-black text-xl uppercase">\${r.from.charAt(0)}</div>
+                                    <div>
+                                        <span class="text-white font-bold">\${r.from}</span>
+                                        <p class="text-gray-400 text-xs">Muốn kết bạn với bạn</p>
+                                    </div>
+                                </div>
+                                <div class="flex space-x-2">
+                                    <button onclick="acceptRequest('\${r.from}')" class="px-3 py-2 bg-green-600 text-white rounded-lg font-bold hover:bg-green-500 active:scale-95 transition text-sm">✅ Chấp nhận</button>
+                                    <button onclick="rejectRequest('\${r.from}')" class="px-3 py-2 bg-red-600/20 text-red-400 rounded-lg font-bold hover:bg-red-600 hover:text-white active:scale-95 transition text-sm">❌</button>
+                                </div>
+                            </div>
+                        \`).join('');
+                    }
+                }
+            } catch (err) { }
+        }
+
+        async function sendFriendRequest() {
             const friendName = document.getElementById('friend-input').value.trim();
             if (!friendName) return;
 
             try {
-                const res = await fetch(\`\${API_URL}/users/friend\`, {
+                const res = await fetch(\`\${API_URL}/users/friend/request\`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username: currentUser, friendName })
                 });
                 const data = await res.json();
+                alert(data.message);
                 if (data.success) {
                     document.getElementById('friend-input').value = '';
+                    loadFriends(); // Tải lại nếu đã tự động chấp nhận
+                }
+            } catch (err) { }
+        }
+
+        async function acceptRequest(fromUser) {
+            try {
+                const res = await fetch(\`\${API_URL}/users/friend/accept\`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: currentUser, fromUser })
+                });
+                const data = await res.json();
+                if (data.success) {
                     loadFriends();
+                    loadFriendRequests();
                 } else {
                     alert(data.message);
                 }
             } catch (err) { }
         }
+
+        async function rejectRequest(fromUser) {
+            try {
+                const res = await fetch(\`\${API_URL}/users/friend/reject\`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: currentUser, fromUser })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    loadFriendRequests();
+                }
+            } catch (err) { }
+        }
+
+        // Kiểm tra lời mời mới mỗi 10 giây
+        setInterval(() => {
+            if (currentUser) loadFriendRequests();
+        }, 10000);
 
         // ==========================================
         // 3. LOGIC TƯƠNG TÁC SERVER (FETCH API)
@@ -889,10 +1033,10 @@ const HTML_CONTENT = `<!DOCTYPE html>
                 ).join('');
 
                 // Nút Xóa (chỉ hiện nếu là bài của mình)
-                const deleteBtnHtml = post.author === currentUser 
+                const deleteBtnHtml = post.author === currentUser
                     ? \`<button onclick="deletePost('\${post.id}')" class="p-2 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-full transition" title="Gỡ ảnh này">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                       </button>\` 
+                       </button>\`
                     : '';
 
                 const postHtml = \`
