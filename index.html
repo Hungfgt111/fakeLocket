@@ -48,15 +48,27 @@
     <!-- HEADER -->
     <header
         class="fixed top-0 left-0 right-0 z-50 bg-dark/90 backdrop-blur-md p-4 flex justify-between items-center border-b border-gray-800">
-        <!-- Nút Bạn Bè (có badge thông báo) -->
-        <button onclick="openFriends()" class="text-white hover:text-brand transition relative">
-            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z">
-                </path>
-            </svg>
-            <span id="friend-badge" class="hidden absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-xs font-bold flex items-center justify-center text-white">0</span>
-        </button>
+        <div class="flex items-center space-x-3.5">
+            <!-- Nút Bạn Bè (có badge thông báo) -->
+            <button onclick="openFriends()" class="text-white hover:text-brand transition relative">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z">
+                    </path>
+                </svg>
+                <span id="friend-badge"
+                    class="hidden absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-xs font-bold flex items-center justify-center text-white">0</span>
+            </button>
+
+            <!-- Nút Chia sẻ mã QR -->
+            <button onclick="openShareQr()" class="text-white hover:text-brand transition" title="Mã QR kết bạn">
+                <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z">
+                    </path>
+                </svg>
+            </button>
+        </div>
         <h1 id="app-logo" onclick="handleLogoClick()"
             class="text-2xl font-bold text-brand tracking-wider select-none cursor-pointer">MOMENTS</h1>
         <!-- Nút Trò chơi Flappy Bird -->
@@ -144,9 +156,14 @@
     <!-- MODAL ĐĂNG NHẬP -->
     <div id="login-modal" class="fixed inset-0 z-[80] bg-darker flex flex-col items-center justify-center p-6 hidden">
         <h2 class="text-4xl font-black text-brand mb-2">ĐĂNG NHẬP</h2>
-        <p class="text-center text-gray-400 mb-8">Nhập một cái tên ngầu ngầu để bạn bè nhận ra bạn nhé!</p>
-        <input type="text" id="username-input" placeholder="Ví dụ: Nam, Nữ, ..."
-            class="w-full max-w-sm bg-gray-800 text-white rounded-2xl px-6 py-4 outline-none border border-gray-700 focus:border-brand transition text-center mb-4 text-2xl font-bold">
+        <p class="text-center text-gray-400 mb-6 text-sm">Tài khoản mới sẽ tự động đăng ký với mật khẩu được nhập!</p>
+
+        <input type="text" id="username-input" placeholder="Tên tài khoản..."
+            class="w-full max-w-sm bg-gray-800 text-white rounded-2xl px-6 py-4 outline-none border border-gray-700 focus:border-brand transition text-center mb-4 text-xl font-bold">
+
+        <input type="password" id="password-input" placeholder="Mật khẩu bảo mật..."
+            class="w-full max-w-sm bg-gray-800 text-white rounded-2xl px-6 py-4 outline-none border border-gray-700 focus:border-brand transition text-center mb-6 text-xl font-bold">
+
         <button onclick="loginUser()"
             class="w-full max-w-sm py-4 bg-brand text-black rounded-2xl font-black text-xl hover:bg-yellow-500 active:scale-95 transition-transform">VÀO
             APP</button>
@@ -191,20 +208,23 @@
         </div>
 
         <!-- KHU VỰC CHIA SẺ LINK & QR CODE KẾT BẠN -->
-        <div class="bg-gray-900/90 border border-gray-800 p-4 rounded-2xl mb-6 flex flex-col items-center text-center shadow-lg">
+        <div
+            class="bg-gray-900/90 border border-gray-800 p-4 rounded-2xl mb-6 flex flex-col items-center text-center shadow-lg">
             <h3 class="text-xs font-black text-brand uppercase tracking-widest mb-3">Mã QR & Link Kết Bạn Của Tôi</h3>
-            
+
             <!-- Ảnh QR Code -->
             <div class="p-3 bg-white rounded-xl mb-3 aspect-square w-36 flex items-center justify-center shadow-inner">
                 <img id="my-qr-image" src="" alt="Mã QR kết bạn" class="w-full h-full object-contain">
             </div>
-            
-            <p class="text-xs text-gray-400 mb-3 px-2">Để người khác quét mã này hoặc bấm link dưới để kết bạn ngay lập tức!</p>
-            
+
+            <p class="text-xs text-gray-400 mb-3 px-2">Để người khác quét mã này hoặc bấm link dưới để kết bạn ngay lập
+                tức!</p>
+
             <div class="w-full flex items-center space-x-2 bg-gray-800 p-1.5 rounded-xl border border-gray-700">
                 <input type="text" id="share-link-input" readonly
                     class="flex-1 bg-transparent text-gray-300 text-xs px-2 outline-none cursor-default truncate">
-                <button onclick="copyShareLink()" class="px-4 py-2 bg-brand text-black rounded-lg text-xs font-bold hover:bg-yellow-500 active:scale-95 transition shrink-0">
+                <button onclick="copyShareLink()"
+                    class="px-4 py-2 bg-brand text-black rounded-lg text-xs font-bold hover:bg-yellow-500 active:scale-95 transition shrink-0">
                     Sao chép
                 </button>
             </div>
@@ -236,26 +256,77 @@
     </div>
 
     <!-- MODAL GỬI KẾT BẠN QUA LINK -->
-    <div id="add-friend-url-modal" class="fixed inset-0 z-[100] bg-black/95 hidden flex-col items-center justify-center p-6">
-        <div class="bg-gray-900 w-full max-w-sm rounded-3xl p-6 border border-gray-800 flex flex-col items-center text-center">
-            <div class="w-16 h-16 bg-brand rounded-full flex items-center justify-center font-black text-black text-3xl uppercase mb-4 shadow-[0_0_15px_rgba(255,176,0,0.3)]">
+    <div id="add-friend-url-modal"
+        class="fixed inset-0 z-[100] bg-black/95 hidden flex-col items-center justify-center p-6">
+        <div
+            class="bg-gray-900 w-full max-w-sm rounded-3xl p-6 border border-gray-800 flex flex-col items-center text-center">
+            <div
+                class="w-16 h-16 bg-brand rounded-full flex items-center justify-center font-black text-black text-3xl uppercase mb-4 shadow-[0_0_15px_rgba(255,176,0,0.3)]">
                 <span id="url-friend-avatar">?</span>
             </div>
-            
-            <h2 class="text-2xl font-black text-white mb-1">Kết Bạn Với <span id="url-friend-name" class="text-brand"></span></h2>
+
+            <h2 class="text-2xl font-black text-white mb-1">Kết Bạn Với <span id="url-friend-name"
+                    class="text-brand"></span></h2>
             <p class="text-xs text-gray-400 mb-6">Bạn được chia sẻ link kết bạn trực tiếp từ người này</p>
-            
+
             <div class="w-full space-y-4 mb-6">
                 <div>
-                    <label class="block text-left text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Lời nhắn gửi kèm</label>
-                    <textarea id="url-friend-message" rows="3" placeholder="Ví dụ: Chào bạn, mình là..." 
+                    <label class="block text-left text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Lời
+                        nhắn gửi kèm</label>
+                    <textarea id="url-friend-message" rows="3" placeholder="Ví dụ: Chào bạn, mình là..."
                         class="w-full bg-gray-800 text-white rounded-xl p-3 outline-none border border-gray-700 focus:border-brand transition text-sm resize-none"></textarea>
                 </div>
             </div>
-            
+
             <div class="flex space-x-3 w-full">
-                <button onclick="closeUrlFriendModal()" class="flex-1 py-3 bg-gray-800 hover:bg-gray-750 rounded-xl font-bold text-sm text-gray-300 transition active:scale-95">Đóng</button>
-                <button onclick="submitUrlFriendRequest()" class="flex-1 py-3 bg-brand text-black rounded-xl font-bold text-sm hover:bg-yellow-500 transition active:scale-95 shadow-md">Gửi Yêu Cầu</button>
+                <button onclick="closeUrlFriendModal()"
+                    class="flex-1 py-3 bg-gray-800 hover:bg-gray-750 rounded-xl font-bold text-sm text-gray-300 transition active:scale-95">Đóng</button>
+                <button onclick="submitUrlFriendRequest()"
+                    class="flex-1 py-3 bg-brand text-black rounded-xl font-bold text-sm hover:bg-yellow-500 transition active:scale-95 shadow-md">Gửi
+                    Yêu Cầu</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL SHARE QR & LINK NHANH (POP-UP GLASSMORPHISM) -->
+    <div id="share-qr-modal"
+        class="fixed inset-0 z-[75] bg-black/80 hidden flex-col items-center justify-center p-6 backdrop-blur-sm">
+        <div
+            class="bg-gray-900/90 border border-gray-800 w-full max-w-sm rounded-3xl p-6 flex flex-col items-center text-center shadow-2xl relative">
+            <!-- Nút đóng -->
+            <button onclick="closeShareQr()"
+                class="absolute top-4 right-4 p-2 bg-gray-800 hover:bg-gray-750 rounded-full text-white active:scale-95 transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
+                    </path>
+                </svg>
+            </button>
+
+            <h2 class="text-2xl font-black text-brand mb-1">MÃ QR KẾT BẠN</h2>
+            <p class="text-xs text-gray-400 mb-6">Xin chào <span id="share-qr-user"
+                    class="text-white font-bold"></span>! Quét mã bên dưới để kết bạn</p>
+
+            <!-- Ảnh QR Code -->
+            <div class="p-4 bg-white rounded-2xl mb-6 aspect-square w-44 flex items-center justify-center shadow-lg">
+                <img id="share-qr-image" src="" alt="Mã QR kết bạn" class="w-full h-full object-contain">
+            </div>
+
+            <p class="text-xs text-gray-400 mb-4 px-2">Hoặc chia sẻ đường link này trực tiếp cho bạn bè của bạn:</p>
+
+            <div class="w-full flex flex-col space-y-3">
+                <div class="w-full flex items-center space-x-2 bg-gray-800 p-2 rounded-xl border border-gray-750">
+                    <input type="text" id="share-qr-link-input" readonly
+                        class="flex-1 bg-transparent text-gray-300 text-xs px-2 outline-none cursor-default truncate">
+                    <button onclick="copyShareLink2()"
+                        class="px-4 py-2 bg-brand text-black rounded-lg text-xs font-bold hover:bg-yellow-500 active:scale-95 transition shrink-0">
+                        Sao chép
+                    </button>
+                </div>
+
+                <button onclick="shareMyLinkNative()"
+                    class="w-full py-3.5 bg-brand text-black rounded-xl font-black text-sm hover:bg-yellow-500 active:scale-95 transition shadow-[0_4px_15px_rgba(255,176,0,0.2)]">
+                    🚀 CHIA SẺ QUA ỨNG DỤNG KHÁC
+                </button>
             </div>
         </div>
     </div>
@@ -508,37 +579,68 @@
             if (!currentUser) {
                 document.getElementById('login-modal').classList.remove('hidden');
             } else {
+                const currentPassword = localStorage.getItem('locket_password') || '';
                 // Đăng nhập ngầm lại để báo cho server
                 fetch(`${API_URL}/users/login`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: currentUser })
-                }).then(() => loadPosts());
+                    body: JSON.stringify({ username: currentUser, password: currentPassword })
+                }).then(async (res) => {
+                    const data = await res.json();
+                    if (!data.success) {
+                        // Nếu sai mật khẩu hoặc tài khoản bị xóa bởi Admin
+                        logoutUser();
+                    } else {
+                        loadPosts();
+                    }
+                }).catch(() => {
+                    // Lỗi mạng tạm thời, vẫn tải bài đăng từ local
+                    loadPosts();
+                });
             }
+        }
+
+        function logoutUser() {
+            localStorage.removeItem('locket_username');
+            localStorage.removeItem('locket_password');
+            currentUser = null;
+            document.getElementById('login-modal').classList.remove('hidden');
         }
 
         async function loginUser() {
             const input = document.getElementById('username-input').value.trim();
+            const passwordInput = document.getElementById('password-input').value.trim();
             if (!input) return alert("Vui lòng nhập tên!");
+            if (!passwordInput) return alert("Vui lòng nhập mật khẩu!");
 
             try {
                 const res = await fetch(`${API_URL}/users/login`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: input })
+                    body: JSON.stringify({ username: input, password: passwordInput })
                 });
                 const data = await res.json();
                 if (data.success) {
                     currentUser = input;
                     localStorage.setItem('locket_username', input);
+                    localStorage.setItem('locket_password', passwordInput);
+
+                    if (data.message) {
+                        alert(data.message); // Hiển thị "Tạo tài khoản mới thành công!"
+                    }
+
                     document.getElementById('login-modal').classList.add('hidden');
-                    
+                    document.getElementById('username-input').value = '';
+                    document.getElementById('password-input').value = '';
+
                     // Nếu đang có yêu cầu kết bạn chờ sẵn từ URL
                     if (pendingAddFriendFromUrl) {
                         showUrlFriendModal(pendingAddFriendFromUrl);
                     }
-                    
+
                     loadPosts();
+                } else {
+                    alert(data.message);
                 }
             } catch (err) {
                 alert("Lỗi kết nối Server!");
@@ -553,7 +655,7 @@
             // Tạo link chia sẻ và ảnh QR Code
             const shareUrl = window.location.origin + window.location.pathname + '?add-friend=' + encodeURIComponent(currentUser);
             document.getElementById('share-link-input').value = shareUrl;
-            
+
             const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(shareUrl)}`;
             document.getElementById('my-qr-image').src = qrUrl;
 
@@ -692,7 +794,7 @@
                 }
 
                 pendingAddFriendFromUrl = addFriendParam;
-                
+
                 if (!currentUser) {
                     alert(`Vui lòng đăng nhập để gửi lời mời kết bạn tới "${addFriendParam}"!`);
                     document.getElementById('login-modal').classList.remove('hidden');
@@ -723,6 +825,54 @@
             closeUrlFriendModal();
         }
         // --- KẾT THÚC LOGIC KẾT BẠN QUA URL/QR ---
+
+        // --- LOGIC CHIA SẼ QR & LINK TRỰC TIẾP ---
+        function openShareQr() {
+            if (!currentUser) return alert("Vui lòng đăng nhập trước!");
+
+            document.getElementById('share-qr-user').innerText = currentUser;
+
+            const shareUrl = window.location.origin + window.location.pathname + '?add-friend=' + encodeURIComponent(currentUser);
+            document.getElementById('share-qr-link-input').value = shareUrl;
+
+            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(shareUrl)}`;
+            document.getElementById('share-qr-image').src = qrUrl;
+
+            document.getElementById('share-qr-modal').classList.remove('hidden');
+            document.getElementById('share-qr-modal').classList.add('flex');
+        }
+
+        function closeShareQr() {
+            document.getElementById('share-qr-modal').classList.add('hidden');
+            document.getElementById('share-qr-modal').classList.remove('flex');
+        }
+
+        function copyShareLink2() {
+            const shareInput = document.getElementById('share-qr-link-input');
+            shareInput.select();
+            shareInput.setSelectionRange(0, 99999);
+            navigator.clipboard.writeText(shareInput.value).then(() => {
+                alert("Đã sao chép link kết bạn vào Clipboard!");
+            }).catch(() => {
+                alert("Không thể tự sao chép. Hãy tự bôi đen và copy link nhé!");
+            });
+        }
+
+        function shareMyLinkNative() {
+            const shareUrl = document.getElementById('share-qr-link-input').value;
+            if (navigator.share) {
+                navigator.share({
+                    title: 'Fake Locket - Kết Bạn',
+                    text: `Hãy kết bạn Locket với mình nhé! Tên tài khoản của mình là: ${currentUser}`,
+                    url: shareUrl
+                }).catch((err) => {
+                    console.log("Hủy chia sẻ hoặc lỗi:", err);
+                });
+            } else {
+                copyShareLink2();
+            }
+        }
+        // --- KẾT THÚC LOGIC CHIA SẼ QR & LINK TRỰC TIẾP ---
 
         async function acceptRequest(fromUser) {
             try {

@@ -1,0 +1,10 @@
+{
+    "users": {
+        "hung": {
+            "password": "1",
+            "friends": []
+        }
+    },
+    "posts": [],
+    "friendRequests": []
+}

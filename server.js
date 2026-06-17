@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const PORT = 3000;
@@ -18,14 +19,33 @@ app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static(__dirname));
 
 // ==========================================
-// MẢNG DỮ LIỆU TẠM THỜI (IN-MEMORY DATABASE)
+// CƠ SỞ DỮ LIỆU TỆP TIN (FILE-BASED DATABASE)
 // ==========================================
-// Cấu trúc post: { id, author, image, caption, hearts, comments: [], timestamp }
-let posts = [];
+const dbPath = path.join(__dirname, 'db.json');
+let db = { users: {}, posts: [], friendRequests: [] };
 
-// Quản lý người dùng và bạn bè
-// Cấu trúc: { "nam": { friends: ["nu"] }, "nu": { friends: ["nam"] } }
-let users = {};
+if (fs.existsSync(dbPath)) {
+    try {
+        db = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
+    } catch (e) {
+        console.error("Lỗi đọc db.json, khởi tạo database trống:", e);
+    }
+}
+
+let users = db.users || {};
+let posts = db.posts || [];
+let friendRequests = db.friendRequests || [];
+
+function saveDb() {
+    try {
+        db.users = users;
+        db.posts = posts;
+        db.friendRequests = friendRequests;
+        fs.writeFileSync(dbPath, JSON.stringify(db, null, 4), 'utf8');
+    } catch (e) {
+        console.error("Lỗi lưu file db.json:", e);
+    }
+}
 
 // ==========================================
 // API ENDPOINTS
@@ -67,6 +87,7 @@ app.post('/api/posts', (req, res) => {
     };
 
     posts.push(newPost);
+    saveDb();
     console.log(`[+] [${newPost.author}] đăng bài mới: ID ${newPost.id}`);
     res.json({ success: true, message: 'Đăng khoảnh khắc thành công!', post: newPost });
 });
@@ -81,6 +102,7 @@ app.post('/api/posts/:id/heart', (req, res) => {
     }
 
     post.hearts += 1; // Tăng lượt tim lên 1
+    saveDb();
     console.log(`[<3] Bài viết ${postId} vừa được thả tim (Tổng: ${post.hearts})`);
     res.json({ success: true, hearts: post.hearts });
 });
@@ -107,6 +129,7 @@ app.post('/api/posts/:id/comment', (req, res) => {
     };
 
     post.comments.push(newComment);
+    saveDb();
     console.log(`[MSG] [${newComment.author}] bình luận ở bài ${postId}: ${text}`);
     res.json({ success: true, comment: newComment });
 });
@@ -127,6 +150,7 @@ app.delete('/api/posts/:id', (req, res) => {
     }
 
     posts.splice(postIndex, 1);
+    saveDb();
     console.log(`[DEL] ${username} đã gỡ bài viết ${postId}`);
     res.json({ success: true, message: 'Đã gỡ bài viết!' });
 });
@@ -135,18 +159,27 @@ app.delete('/api/posts/:id', (req, res) => {
 // API USER & BẠN BÈ (HỆ THỐNG LỜI MỜI)
 // ==========================================
 
-// Lời mời kết bạn đang chờ xử lý
-// Cấu trúc: [{ from: "nam", to: "nu", timestamp }]
-let friendRequests = [];
+// Lời mời kết bạn đang chờ xử lý (đã lấy từ db.json)
+// let friendRequests = db.friendRequests || [];
 
-// Đăng nhập / Khởi tạo User
+// Đăng nhập / Khởi tạo User / Bảo mật Mật khẩu
 app.post('/api/users/login', (req, res) => {
-    const { username } = req.body;
+    const { username, password } = req.body;
     if (!username) return res.status(400).json({ success: false, message: 'Thiếu tên hiển thị' });
+    if (!password) return res.status(400).json({ success: false, message: 'Thiếu mật khẩu' });
     
     if (!users[username]) {
-        users[username] = { friends: [] };
-        console.log(`[USER] Tạo mới: ${username}`);
+        // Tự động đăng ký nếu tài khoản mới
+        users[username] = { password: password, friends: [] };
+        saveDb();
+        console.log(`[USER] Tạo mới tài khoản: ${username}`);
+        const pendingCount = friendRequests.filter(r => r.to === username).length;
+        return res.json({ success: true, username, friends: [], pendingCount, message: "Tạo tài khoản mới thành công!" });
+    }
+    
+    // Nếu tài khoản đã tồn tại, kiểm tra mật khẩu
+    if (users[username].password !== password) {
+        return res.status(401).json({ success: false, message: 'Sai mật khẩu tài khoản! Vui lòng nhập lại.' });
     }
     
     // Đếm số lời mời đang chờ
@@ -180,11 +213,13 @@ app.post('/api/users/friend/request', (req, res) => {
         friendRequests = friendRequests.filter(r => !(r.from === friendName && r.to === username));
         if (!users[username].friends.includes(friendName)) users[username].friends.push(friendName);
         if (!users[friendName].friends.includes(username)) users[friendName].friends.push(username);
+        saveDb();
         console.log(`[FRIEND] ${username} và ${friendName} đã thành bạn bè (tự động chấp nhận lời mời ngược)`);
         return res.json({ success: true, message: `${friendName} cũng đã gửi lời mời cho bạn. Hai bạn giờ là bạn bè!`, friends: users[username].friends });
     }
     
     friendRequests.push({ from: username, to: friendName, message: message || '', timestamp: Date.now() });
+    saveDb();
     console.log(`[REQUEST] ${username} gửi lời mời kết bạn tới ${friendName} với lời nhắn: "${message || ''}"`);
     res.json({ success: true, message: `Đã gửi lời mời kết bạn tới ${friendName}! Đợi họ chấp nhận nhé.` });
 });
@@ -213,6 +248,7 @@ app.post('/api/users/friend/accept', (req, res) => {
     friendRequests.splice(reqIndex, 1);
     if (!users[username].friends.includes(fromUser)) users[username].friends.push(fromUser);
     if (users[fromUser] && !users[fromUser].friends.includes(username)) users[fromUser].friends.push(username);
+    saveDb();
     
     console.log(`[ACCEPT] ${username} chấp nhận lời mời từ ${fromUser}`);
     res.json({ success: true, message: `Đã chấp nhận! Bạn và ${fromUser} giờ là bạn bè.`, friends: users[username].friends });
@@ -223,6 +259,7 @@ app.post('/api/users/friend/reject', (req, res) => {
     const { username, fromUser } = req.body;
     
     friendRequests = friendRequests.filter(r => !(r.from === fromUser && r.to === username));
+    saveDb();
     
     console.log(`[REJECT] ${username} từ chối lời mời từ ${fromUser}`);
     res.json({ success: true, message: `Đã từ chối lời mời từ ${fromUser}.` });
@@ -266,6 +303,8 @@ app.delete('/api/admin/users/:username', (req, res) => {
     
     // Xóa toàn bộ bài đăng của user
     posts = posts.filter(p => p.author !== username);
+    
+    saveDb();
     
     console.log(`[ADMIN] Đã xóa toàn bộ dữ liệu của người dùng: ${username}`);
     res.json({ success: true, message: `Đã xóa ${username} thành công!` });
