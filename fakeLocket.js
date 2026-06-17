@@ -1,0 +1,1064 @@
+
+const express = require('express');
+const cors = require('cors');
+const bodyParser = require('body-parser');
+const path = require('path');
+
+const app = express();
+const PORT = 3000;
+
+// Cấu hình Middleware
+// Bật CORS để cho phép Frontend gọi API mà không bị chặn
+app.use(cors());
+// Tăng giới hạn dung lượng lên 50MB vì ảnh chuyển sang chuỗi Base64 sẽ rất nặng
+app.use(bodyParser.json({ limit: '50mb' }));
+app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
+
+// Cấu hình để phục vụ file tĩnh (Frontend: index.html) 
+// Khi truy cập http://localhost:3000 nó sẽ tự đọc file index.html cùng thư mục
+
+
+// ==========================================
+// MẢNG DỮ LIỆU TẠM THỜI (IN-MEMORY DATABASE)
+// ==========================================
+// Cấu trúc post: { id, author, image, caption, hearts, comments: [], timestamp }
+let posts = [];
+
+// Quản lý người dùng và bạn bè
+// Cấu trúc: { "nam": { friends: ["nu"] }, "nu": { friends: ["nam"] } }
+let users = {};
+
+// ==========================================
+// API ENDPOINTS
+// ==========================================
+
+// 1. Lấy danh sách bài đăng (Lọc theo bạn bè)
+app.get('/api/posts', (req, res) => {
+    const { username } = req.query;
+    
+    let allowedAuthors = [username]; // Luôn thấy bài của chính mình
+    if (username && users[username]) {
+        allowedAuthors = allowedAuthors.concat(users[username].friends);
+    }
+
+    // Lọc bài viết
+    const filteredPosts = posts.filter(p => allowedAuthors.includes(p.author));
+    // Sắp xếp bài đăng mới nhất lên đầu tiên
+    const sortedPosts = filteredPosts.sort((a, b) => b.timestamp - a.timestamp);
+    
+    res.json({ success: true, data: sortedPosts });
+});
+
+// 2. Đăng một khoảnh khắc mới (POST /api/posts)
+app.post('/api/posts', (req, res) => {
+    const { image, caption, author } = req.body;
+
+    if (!image) {
+        return res.status(400).json({ success: false, message: 'Vui lòng cung cấp ảnh!' });
+    }
+
+    const newPost = {
+        id: Date.now().toString(),
+        author: author || 'Ẩn danh', // Lưu người đăng
+        image: image,
+        caption: caption || '',
+        hearts: 0,
+        comments: [],
+        timestamp: Date.now()
+    };
+
+    posts.push(newPost);
+    console.log(`[+] [${newPost.author}] đăng bài mới: ID ${newPost.id}`);
+    res.json({ success: true, message: 'Đăng khoảnh khắc thành công!', post: newPost });
+});
+
+// 3. Thả tim bài viết (POST /api/posts/:id/heart)
+app.post('/api/posts/:id/heart', (req, res) => {
+    const postId = req.params.id;
+    const post = posts.find(p => p.id === postId);
+
+    if (!post) {
+        return res.status(404).json({ success: false, message: 'Không tìm thấy bài viết!' });
+    }
+
+    post.hearts += 1; // Tăng lượt tim lên 1
+    console.log(`[<3] Bài viết ${postId} vừa được thả tim (Tổng: ${post.hearts})`);
+    res.json({ success: true, hearts: post.hearts });
+});
+
+// 4. Bình luận vào bài viết (POST /api/posts/:id/comment)
+app.post('/api/posts/:id/comment', (req, res) => {
+    const postId = req.params.id;
+    const { text, author } = req.body;
+
+    if (!text || text.trim() === '') {
+        return res.status(400).json({ success: false, message: 'Bình luận không được để trống!' });
+    }
+
+    const post = posts.find(p => p.id === postId);
+    if (!post) {
+        return res.status(404).json({ success: false, message: 'Không tìm thấy bài viết!' });
+    }
+
+    const newComment = {
+        id: Date.now().toString(),
+        author: author || 'Ẩn danh',
+        text: text.trim(),
+        timestamp: Date.now()
+    };
+
+    post.comments.push(newComment);
+    console.log(`[MSG] [${newComment.author}] bình luận ở bài ${postId}: ${text}`);
+    res.json({ success: true, comment: newComment });
+});
+
+// ==========================================
+// API USER & BẠN BÈ
+// ==========================================
+
+// Đăng nhập / Khởi tạo User
+app.post('/api/users/login', (req, res) => {
+    const { username } = req.body;
+    if (!username) return res.status(400).json({ success: false, message: 'Thiếu tên hiển thị' });
+    
+    // Nếu chưa có user thì tạo mới
+    if (!users[username]) {
+        users[username] = { friends: [] };
+        console.log(`[USER] Tạo mới: ${username}`);
+    }
+    res.json({ success: true, username, friends: users[username].friends });
+});
+
+// Thêm bạn bè
+app.post('/api/users/friend', (req, res) => {
+    const { username, friendName } = req.body;
+    
+    if (!users[username]) return res.status(404).json({ success: false, message: "Bạn chưa đăng nhập!" });
+    if (!users[friendName]) return res.status(404).json({ success: false, message: "Không tìm thấy người này (họ chưa từng mở ứng dụng)" });
+    if (username === friendName) return res.status(400).json({ success: false, message: "Không thể tự kết bạn với chính mình" });
+    
+    // Kết bạn 2 chiều
+    if (!users[username].friends.includes(friendName)) {
+        users[username].friends.push(friendName);
+    }
+    if (!users[friendName].friends.includes(username)) {
+        users[friendName].friends.push(username);
+    }
+    
+    console.log(`[FRIEND] ${username} và ${friendName} đã thành bạn bè`);
+    res.json({ success: true, message: `Đã kết bạn với ${friendName}!`, friends: users[username].friends });
+});
+
+// Lấy danh sách bạn bè
+app.get('/api/users/:username/friends', (req, res) => {
+    const { username } = req.params;
+    if (!users[username]) return res.json({ success: true, friends: [] });
+    res.json({ success: true, friends: users[username].friends });
+});
+
+// Khởi chạy Server
+app.listen(PORT, () => {
+    console.log(`🚀 Server backend đang chạy tại http://localhost:${PORT}`);
+    console.log(`👉 Mở điện thoại cùng mạng WiFi và truy cập địa chỉ IP máy tính (VD: http://192.168.x.x:${PORT}) để trải nghiệm.`);
+});
+
+
+// ==========================================
+// FRONTEND BẢN GỘP (HTML + CSS + JS)
+// ==========================================
+const HTML_CONTENT = `<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Locket Clone</title>
+    <!-- Tích hợp Tailwind CSS qua CDN để làm giao diện Dark Mode nhanh chóng -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Thư viện MediaPipe Face Mesh (AI) -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+    <script>
+        // Cấu hình màu chủ đạo cho Tailwind
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: '#ffb000', // Màu vàng đặc trưng giống Locket
+                        dark: '#121212',
+                        darker: '#0a0a0a'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Ẩn scrollbar để giao diện mượt như app native */
+        ::-webkit-scrollbar {
+            display: none;
+        }
+
+        body {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+            background-color: #0a0a0a;
+            color: white;
+        }
+
+        .aspect-square {
+            aspect-ratio: 1 / 1;
+        }
+    </style>
+</head>
+
+<body class="bg-darker font-sans antialiased pb-20">
+
+    <!-- HEADER -->
+    <header
+        class="fixed top-0 left-0 right-0 z-50 bg-dark/90 backdrop-blur-md p-4 flex justify-between items-center border-b border-gray-800">
+        <!-- Nút Bạn Bè -->
+        <button onclick="openFriends()" class="text-white hover:text-brand transition">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+        </button>
+        <h1 class="text-2xl font-bold text-brand tracking-wider">MOMENTS</h1>
+        <!-- Nút Trò chơi Flappy Bird -->
+        <button onclick="openGame()" class="text-brand hover:text-white transition">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+        </button>
+    </header>
+
+    <!-- MAIN CONTENT -->
+    <main class="mt-16 w-full max-w-md mx-auto relative">
+
+        <!-- PHẦN 1: KHU VỰC CAMERA -->
+        <section class="p-4 flex flex-col items-center">
+            <!-- Khung hiển thị Camera hoặc Ảnh đã chụp -->
+            <div
+                class="relative w-full aspect-square bg-gray-900 rounded-3xl overflow-hidden shadow-lg border border-gray-800">
+                <!-- Video stream từ Camera -->
+                <video id="camera-stream" class="w-full h-full object-cover" autoplay playsinline></video>
+                <!-- Ảnh preview sau khi chụp -->
+                <img id="photo-preview" class="w-full h-full object-cover hidden" alt="Preview">
+                <!-- Canvas ẩn để xử lý việc chụp ảnh -->
+                <canvas id="canvas" class="hidden"></canvas>
+            </div>
+
+            <!-- Các nút điều khiển Camera -->
+            <div id="camera-controls" class="mt-6 flex items-center justify-center space-x-8">
+                <!-- Nút chọn ảnh từ thư viện -->
+                <button onclick="document.getElementById('file-input').click()"
+                    class="p-3 bg-gray-800 rounded-full hover:bg-gray-700 transition">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z">
+                        </path>
+                    </svg>
+                </button>
+                <input type="file" id="file-input" accept="image/*" class="hidden" onchange="handleFileUpload(event)">
+
+                <!-- Nút Chụp Ảnh (Nút tròn to ở giữa) -->
+                <button id="capture-btn" onclick="capturePhoto()"
+                    class="w-20 h-20 bg-white rounded-full border-4 border-brand shadow-[0_0_15px_rgba(255,176,0,0.5)] active:scale-95 transition-transform"></button>
+
+                <!-- Nút Đảo Camera -->
+                <button onclick="switchCamera()" class="p-3 bg-gray-800 rounded-full hover:bg-gray-700 transition">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
+                        </path>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Khu vực viết Caption & Nút Đăng (Chỉ hiện sau khi đã chụp ảnh) -->
+            <div id="post-controls" class="w-full mt-4 hidden flex-col items-center">
+                <input type="text" id="caption-input" placeholder="Thêm mô tả cho khoảnh khắc này..."
+                    class="w-full bg-gray-800 text-white rounded-xl px-4 py-3 outline-none border border-gray-700 focus:border-brand transition text-center mb-4">
+
+                <div class="flex space-x-4 w-full">
+                    <!-- Nút Chụp Lại -->
+                    <button onclick="retakePhoto()"
+                        class="flex-1 py-3 bg-gray-700 rounded-xl font-bold active:bg-gray-600 transition">Chụp
+                        lại</button>
+                    <!-- Nút ĐĂNG -->
+                    <button id="submit-post-btn" onclick="submitPost()"
+                        class="flex-1 py-3 bg-brand text-black rounded-xl font-bold active:bg-yellow-500 transition flex justify-center items-center">
+                        <span id="submit-text">ĐĂNG KHOẢNH KHẮC</span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Đường kẻ phân cách -->
+        <div class="w-full h-px bg-gray-800 my-4"></div>
+
+        <!-- PHẦN 3: BẢNG TIN (FEED) -->
+        <section id="feed" class="p-4 space-y-8 pb-10">
+            <!-- Các bài đăng sẽ được JavaScript chèn tự động vào đây -->
+            <p class="text-center text-gray-500 text-sm">Đang tải bảng tin...</p>
+        </section>
+
+    </main>
+
+    <!-- MODAL ĐĂNG NHẬP -->
+    <div id="login-modal" class="fixed inset-0 z-[80] bg-darker flex flex-col items-center justify-center p-6 hidden">
+        <h2 class="text-4xl font-black text-brand mb-2">ĐĂNG NHẬP</h2>
+        <p class="text-center text-gray-400 mb-8">Nhập một cái tên ngầu ngầu để bạn bè nhận ra bạn nhé!</p>
+        <input type="text" id="username-input" placeholder="Ví dụ: Nam, Nữ, ..." class="w-full max-w-sm bg-gray-800 text-white rounded-2xl px-6 py-4 outline-none border border-gray-700 focus:border-brand transition text-center mb-4 text-2xl font-bold">
+        <button onclick="loginUser()" class="w-full max-w-sm py-4 bg-brand text-black rounded-2xl font-black text-xl hover:bg-yellow-500 active:scale-95 transition-transform">VÀO APP</button>
+    </div>
+
+    <!-- MODAL BẠN BÈ -->
+    <div id="friends-modal" class="fixed inset-0 z-[70] bg-darker hidden flex-col p-6 pt-12">
+        <div class="flex justify-between items-center mb-8">
+            <div>
+                <h2 class="text-3xl font-black text-brand">BẠN BÈ</h2>
+                <p class="text-gray-400 text-sm mt-1">Xin chào, <span id="current-user-display" class="font-bold text-white"></span></p>
+            </div>
+            <button onclick="closeFriends()" class="p-3 bg-gray-800 rounded-full text-white active:scale-95 transition">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+        
+        <div class="flex space-x-2 mb-8">
+            <input type="text" id="friend-input" placeholder="Nhập tên bạn bè..." class="flex-1 bg-gray-800 text-white rounded-xl px-4 py-3 outline-none border border-gray-700 focus:border-brand transition">
+            <button onclick="addFriend()" class="px-6 bg-brand text-black rounded-xl font-bold hover:bg-yellow-500 active:scale-95 transition">KẾT BẠN</button>
+        </div>
+        
+        <h3 class="text-gray-400 font-bold mb-4">DANH SÁCH BẠN BÈ (<span id="friend-count">0</span>)</h3>
+        <div id="friends-list" class="space-y-3 overflow-y-auto pb-10">
+            <!-- Danh sách bạn bè chèn vào đây -->
+            <p class="text-gray-600 text-sm italic">Bạn chưa kết bạn với ai cả...</p>
+        </div>
+    </div>
+
+    <!-- PHẦN 4: MÀN HÌNH GAME OVERLAY (FLAPPY BIRD AI) -->
+    <div id="game-overlay" class="fixed inset-0 z-[60] bg-darker hidden flex-col items-center justify-center">
+        <!-- Nút Đóng Game -->
+        <button onclick="closeGame()" class="absolute top-6 left-6 p-2 bg-gray-800 rounded-full text-white z-30">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+        </button>
+
+        <!-- Màn hình chơi game -->
+        <div
+            class="relative w-full max-w-md h-full max-h-[900px] bg-sky-400 overflow-hidden shadow-2xl shadow-brand/20">
+            <!-- Điểm số -->
+            <div class="absolute top-10 w-full text-center text-6xl font-black text-white z-20"
+                style="text-shadow: 3px 3px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;">
+                <span id="game-score">0</span>
+            </div>
+
+            <!-- Canvas vẽ game -->
+            <canvas id="game-canvas" class="w-full h-full"></canvas>
+
+            <!-- Màn hình chờ / Bắt đầu -->
+            <div id="game-start-screen"
+                class="absolute inset-0 bg-black/70 flex flex-col items-center justify-center text-center p-6 z-20">
+                <h2 class="text-4xl font-black text-brand mb-4">FLAPPY AI</h2>
+                <div class="bg-gray-900 rounded-2xl p-6 border border-gray-700 shadow-xl w-full max-w-sm">
+                    <p class="text-white mb-2 text-lg">Cách chơi cực ảo:</p>
+                    <p class="text-gray-400 mb-6 text-sm">Hãy để mặt trước camera và...</p>
+                    <div class="text-5xl animate-bounce mb-6">😮</div>
+                    <p class="text-yellow-400 font-bold text-xl mb-4">HÁ MIỆNG ĐỂ CHIM BAY!</p>
+                </div>
+                <p id="ai-loading-text" class="text-gray-300 mt-6 animate-pulse font-bold tracking-widest text-sm">ĐANG
+                    TẢI MÔ HÌNH TRÍ TUỆ NHÂN TẠO...</p>
+                <button id="start-game-btn" onclick="startGame()"
+                    class="hidden mt-6 py-4 px-10 bg-brand text-black rounded-full font-black text-xl hover:scale-105 active:scale-95 transition-transform shadow-[0_0_20px_rgba(255,176,0,0.4)]">VÀO
+                    CHƠI</button>
+            </div>
+
+            <!-- Game Over -->
+            <div id="game-over-screen"
+                class="absolute inset-0 bg-black/80 hidden flex-col items-center justify-center text-center p-6 z-20">
+                <h2 class="text-5xl font-black text-red-500 mb-2">THUA!</h2>
+                <div class="bg-white rounded-2xl p-6 w-4/5 my-6 shadow-xl text-black">
+                    <p class="text-gray-500 font-bold mb-1">ĐIỂM CỦA BẠN</p>
+                    <p id="final-score" class="text-6xl font-black text-brand mb-2">0</p>
+                </div>
+                <button onclick="resetGame()"
+                    class="py-4 px-10 bg-brand text-black rounded-full font-black text-xl hover:scale-105 active:scale-95 transition shadow-[0_0_20px_rgba(255,176,0,0.4)]">CHƠI
+                    LẠI ĐI CÒN GÌ NỮA</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        // Các biến toàn cục
+        let videoStream = null;
+        let currentFacingMode = "user"; // "user" = cam trước, "environment" = cam sau
+        let capturedImageBase64 = null;
+        let currentUser = localStorage.getItem('locket_username');
+
+        // Tự động nhận diện IP hoặc Localhost để gọi API cho chính xác
+        const API_URL = window.location.origin.includes('file://')
+            ? "http://localhost:3000/api"
+            : \`\${window.location.origin}/api\`;
+
+        // Các elements
+        const video = document.getElementById('camera-stream');
+        const canvas = document.getElementById('canvas');
+        const photoPreview = document.getElementById('photo-preview');
+        const cameraControls = document.getElementById('camera-controls');
+        const postControls = document.getElementById('post-controls');
+        const captionInput = document.getElementById('caption-input');
+        const feedContainer = document.getElementById('feed');
+
+        // ==========================================
+        // 1. LOGIC XỬ LÝ CAMERA
+        // ==========================================
+
+        // Hàm mở Camera
+        async function initCamera() {
+            try {
+                if (videoStream) {
+                    videoStream.getTracks().forEach(track => track.stop());
+                }
+                const constraints = {
+                    video: { facingMode: currentFacingMode, width: { ideal: 1080 }, height: { ideal: 1080 } }
+                };
+                videoStream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = videoStream;
+            } catch (err) {
+                console.error("Lỗi khi mở Camera:", err);
+                alert("Không thể truy cập Camera. Vui lòng cấp quyền hoặc dùng tính năng Chọn Ảnh.");
+            }
+        }
+
+        // Đảo Camera (Trước/Sau)
+        function switchCamera() {
+            currentFacingMode = currentFacingMode === "user" ? "environment" : "user";
+            initCamera();
+        }
+
+        // Hàm Chụp Ảnh
+        function capturePhoto() {
+            if (!videoStream) return;
+            // Đặt kích thước canvas bằng với video
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+
+            // Vẽ frame hiện tại của video lên canvas
+            // Nếu dùng cam trước, cần lật ảnh lại cho đỡ ngược
+            if (currentFacingMode === "user") {
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1);
+            }
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // Chuyển canvas thành chuỗi Base64 JPEG
+            capturedImageBase64 = canvas.toDataURL('image/jpeg', 0.8);
+            showPreview();
+        }
+
+        // Hàm xử lý khi người dùng chọn ảnh từ máy
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                capturedImageBase64 = e.target.result;
+                showPreview();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Hiển thị ảnh đã chụp/chọn và hiện form đăng
+        function showPreview() {
+            video.classList.add('hidden');
+            photoPreview.src = capturedImageBase64;
+            photoPreview.classList.remove('hidden');
+            cameraControls.classList.add('hidden');
+            postControls.classList.remove('hidden');
+            postControls.classList.add('flex');
+            captionInput.focus();
+        }
+
+        // Chụp lại ảnh
+        function retakePhoto() {
+            capturedImageBase64 = null;
+            photoPreview.classList.add('hidden');
+            video.classList.remove('hidden');
+            postControls.classList.add('hidden');
+            postControls.classList.remove('flex');
+            cameraControls.classList.remove('hidden');
+            captionInput.value = '';
+        }
+
+        // ==========================================
+        // 2. LOGIC ĐĂNG NHẬP VÀ BẠN BÈ
+        // ==========================================
+        
+        function checkAuth() {
+            if (!currentUser) {
+                document.getElementById('login-modal').classList.remove('hidden');
+            } else {
+                // Đăng nhập ngầm lại để báo cho server
+                fetch(\`\${API_URL}/users/login\`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: currentUser })
+                }).then(() => loadPosts());
+            }
+        }
+
+        async function loginUser() {
+            const input = document.getElementById('username-input').value.trim();
+            if (!input) return alert("Vui lòng nhập tên!");
+            
+            try {
+                const res = await fetch(\`\${API_URL}/users/login\`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: input })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    currentUser = input;
+                    localStorage.setItem('locket_username', input);
+                    document.getElementById('login-modal').classList.add('hidden');
+                    loadPosts();
+                }
+            } catch (err) {
+                alert("Lỗi kết nối Server!");
+            }
+        }
+
+        function openFriends() {
+            document.getElementById('friends-modal').classList.remove('hidden');
+            document.getElementById('friends-modal').classList.add('flex');
+            document.getElementById('current-user-display').innerText = currentUser;
+            loadFriends();
+        }
+
+        function closeFriends() {
+            document.getElementById('friends-modal').classList.add('hidden');
+            document.getElementById('friends-modal').classList.remove('flex');
+            loadPosts(); // Tải lại bảng tin vì có thể đã thêm bạn mới
+        }
+
+        async function loadFriends() {
+            try {
+                const res = await fetch(\`\${API_URL}/users/\${currentUser}/friends\`);
+                const data = await res.json();
+                if (data.success) {
+                    const listEl = document.getElementById('friends-list');
+                    document.getElementById('friend-count').innerText = data.friends.length;
+                    
+                    if (data.friends.length === 0) {
+                        listEl.innerHTML = '<p class="text-gray-600 text-sm italic">Bạn chưa kết bạn với ai cả...</p>';
+                    } else {
+                        listEl.innerHTML = data.friends.map(f => \`
+                            <div class="bg-gray-800 p-4 rounded-xl flex items-center space-x-3">
+                                <div class="w-10 h-10 bg-brand rounded-full flex items-center justify-center font-bold text-black text-xl uppercase">\${f.charAt(0)}</div>
+                                <span class="text-white font-bold text-lg">\${f}</span>
+                            </div>
+                        \`).join('');
+                    }
+                }
+            } catch (err) {}
+        }
+
+        async function addFriend() {
+            const friendName = document.getElementById('friend-input').value.trim();
+            if (!friendName) return;
+            
+            try {
+                const res = await fetch(\`\${API_URL}/users/friend\`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: currentUser, friendName })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('friend-input').value = '';
+                    loadFriends();
+                } else {
+                    alert(data.message);
+                }
+            } catch (err) {}
+        }
+
+        // ==========================================
+        // 3. LOGIC TƯƠNG TÁC SERVER (FETCH API)
+        // ==========================================
+
+        // Gửi ảnh lên Server
+        async function submitPost() {
+            if (!capturedImageBase64) return;
+            if (!currentUser) return alert("Vui lòng đăng nhập trước!");
+
+            const submitBtn = document.getElementById('submit-post-btn');
+            submitBtn.innerHTML = "ĐANG TẢI...";
+            submitBtn.disabled = true;
+
+            try {
+                const response = await fetch(\`\${API_URL}/posts\`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        author: currentUser,
+                        image: capturedImageBase64,
+                        caption: captionInput.value
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    retakePhoto(); // Reset form
+                    loadPosts();   // Tải lại bảng tin
+                } else {
+                    alert(data.message);
+                }
+            } catch (err) {
+                console.error(err);
+                alert("Lỗi kết nối tới Server!");
+            } finally {
+                submitBtn.innerHTML = "ĐĂNG KHOẢNH KHẮC";
+                submitBtn.disabled = false;
+            }
+        }
+
+        // Thả tim
+        async function heartPost(postId) {
+            try {
+                const res = await fetch(\`\${API_URL}/posts/\${postId}/heart\`, { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById(\`heart-count-\${postId}\`).innerText = data.hearts;
+                    // Hiệu ứng tim đỏ
+                    const icon = document.getElementById(\`heart-icon-\${postId}\`);
+                    icon.classList.add('text-red-500', 'fill-current');
+                }
+            } catch (err) { console.error(err); }
+        }
+
+        // Gửi bình luận
+        async function submitComment(postId) {
+            if (!currentUser) return alert("Vui lòng đăng nhập!");
+            const input = document.getElementById(\`comment-input-\${postId}\`);
+            const text = input.value;
+            if (!text.trim()) return;
+
+            try {
+                const res = await fetch(\`\${API_URL}/posts/\${postId}/comment\`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text, author: currentUser })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    input.value = ''; // Xóa trắng ô nhập
+                    loadPosts(); // Tải lại để hiện comment
+                }
+            } catch (err) { console.error(err); }
+        }
+
+        // Tải danh sách bài đăng từ Server
+        async function loadPosts() {
+            if (!currentUser) return;
+            try {
+                const response = await fetch(\`\${API_URL}/posts?username=\${currentUser}\`);
+                const data = await response.json();
+
+                if (data.success) {
+                    renderFeed(data.data);
+                }
+            } catch (err) {
+                console.error(err);
+                feedContainer.innerHTML = '<p class="text-center text-red-500">Lỗi không thể tải bảng tin.</p>';
+            }
+        }
+
+        // ==========================================
+        // 4. RENDER GIAO DIỆN BẢNG TIN
+        // ==========================================
+        function renderFeed(posts) {
+            if (posts.length === 0) {
+                feedContainer.innerHTML = '<p class="text-center text-gray-500 mt-10">Bạn bè chưa đăng gì. Hãy kết bạn hoặc tự đăng ảnh nhé!</p>';
+                return;
+            }
+
+            feedContainer.innerHTML = ''; // Xóa cũ
+
+            posts.forEach(post => {
+                // Định dạng thời gian
+                const date = new Date(post.timestamp);
+                const timeString = \`\${date.getHours()}:\${date.getMinutes().toString().padStart(2, '0')} - \${date.getDate()}/\${date.getMonth() + 1}\`;
+
+                // HTML cho danh sách comment
+                const commentsHtml = post.comments.map(c =>
+                    \`<p class="text-sm"><span class="font-bold text-gray-400">\${c.author}:</span> \${c.text}</p>\`
+                ).join('');
+
+                const postHtml = \`
+                    <div class="bg-gray-900 rounded-3xl p-4 shadow-lg border border-gray-800">
+                        
+                        <!-- Header người đăng -->
+                        <div class="flex items-center space-x-3 mb-4">
+                            <div class="w-10 h-10 bg-brand rounded-full flex items-center justify-center font-bold text-black text-xl uppercase">\${post.author.charAt(0)}</div>
+                            <div>
+                                <p class="text-white font-bold">\${post.author}</p>
+                                <span class="text-xs text-gray-500">\${timeString}</span>
+                            </div>
+                        </div>
+
+                        <!-- Ảnh đại diện bài viết -->
+                        <div class="rounded-2xl overflow-hidden aspect-square border border-gray-800">
+                            <img src="\${post.image}" class="w-full h-full object-cover" loading="lazy">
+                        </div>
+                        
+                        <!-- Caption -->
+                        <div class="mt-4 flex justify-between items-start">
+                            <p class="font-medium text-lg text-white break-words w-full">\${post.caption}</p>
+                        </div>
+
+                        <!-- Lượt tương tác -->
+                        <div class="mt-3 flex items-center space-x-4">
+                            <button onclick="heartPost('\${post.id}')" class="flex items-center space-x-1 text-gray-400 hover:text-red-500 transition active:scale-125">
+                                <svg id="heart-icon-\${post.id}" class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path></svg>
+                                <span id="heart-count-\${post.id}" class="font-bold text-lg">\${post.hearts}</span>
+                            </button>
+                        </div>
+
+                        <!-- Bình luận -->
+                        <div class="mt-4">
+                            <div class="space-y-1 mb-3 max-h-32 overflow-y-auto">
+                                \${commentsHtml}
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <input type="text" id="comment-input-\${post.id}" placeholder="Viết bình luận..." class="flex-1 bg-gray-800 text-sm text-white rounded-full px-4 py-2 outline-none border border-gray-700 focus:border-brand transition" onkeypress="if(event.key === 'Enter') submitComment('\${post.id}')">
+                                <button onclick="submitComment('\${post.id}')" class="p-2 bg-brand text-black rounded-full hover:bg-yellow-500">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                \`;
+                feedContainer.insertAdjacentHTML('beforeend', postHtml);
+            });
+        }
+
+        // ==========================================
+        // 4. LOGIC GAME FLAPPY BIRD & AI (FACE MESH)
+        // ==========================================
+        const gameOverlay = document.getElementById('game-overlay');
+        const gameCanvas = document.getElementById('game-canvas');
+        const ctxGame = gameCanvas.getContext('2d');
+        const scoreEl = document.getElementById('game-score');
+        const startScreen = document.getElementById('game-start-screen');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const startGameBtn = document.getElementById('start-game-btn');
+        const aiLoadingText = document.getElementById('ai-loading-text');
+
+        let isGameRunning = false;
+        let animationId;
+        let score = 0;
+        let frames = 0;
+
+        let isMouthOpen = false;
+
+        const bird = {
+            x: 50,
+            y: 150,
+            width: 34,
+            height: 24,
+            velocity: 0,
+            gravity: 0.35,
+            jump: -6.5,
+            draw: function () {
+                ctxGame.fillStyle = "#ffb000";
+                ctxGame.beginPath();
+                ctxGame.arc(this.x + this.width / 2, this.y + this.height / 2, this.height / 2 + 2, 0, Math.PI * 2);
+                ctxGame.fill();
+                ctxGame.strokeStyle = "black";
+                ctxGame.lineWidth = 2;
+                ctxGame.stroke();
+
+                // Mắt
+                ctxGame.fillStyle = "white";
+                ctxGame.beginPath();
+                ctxGame.arc(this.x + this.width / 2 + 6, this.y + this.height / 2 - 4, 6, 0, Math.PI * 2);
+                ctxGame.fill();
+                ctxGame.stroke();
+
+                ctxGame.fillStyle = "black";
+                ctxGame.beginPath();
+                ctxGame.arc(this.x + this.width / 2 + 8, this.y + this.height / 2 - 4, 2, 0, Math.PI * 2);
+                ctxGame.fill();
+
+                // Mỏ (Há to nếu isMouthOpen)
+                ctxGame.fillStyle = "red";
+                ctxGame.beginPath();
+                if (isMouthOpen) {
+                    ctxGame.moveTo(this.x + this.width / 2 + 10, this.y + this.height / 2 + 2);
+                    ctxGame.lineTo(this.x + this.width / 2 + 20, this.y + this.height / 2 - 5);
+                    ctxGame.lineTo(this.x + this.width / 2 + 20, this.y + this.height / 2 + 10);
+                } else {
+                    ctxGame.moveTo(this.x + this.width / 2 + 10, this.y + this.height / 2);
+                    ctxGame.lineTo(this.x + this.width / 2 + 20, this.y + this.height / 2 - 2);
+                    ctxGame.lineTo(this.x + this.width / 2 + 20, this.y + this.height / 2 + 2);
+                }
+                ctxGame.fill();
+                ctxGame.stroke();
+            },
+            update: function () {
+                this.velocity += this.gravity;
+                this.y += this.velocity;
+
+                if (this.y + this.height >= gameCanvas.height) {
+                    this.y = gameCanvas.height - this.height;
+                    endGame();
+                }
+                if (this.y <= 0) {
+                    this.y = 0;
+                    this.velocity = 0;
+                }
+            },
+            flap: function () {
+                this.velocity = this.jump;
+            }
+        };
+
+        const pipes = {
+            list: [],
+            width: 60,
+            gap: 150,
+            dx: 3.5,
+            draw: function () {
+                for (let i = 0; i < this.list.length; i++) {
+                    let p = this.list[i];
+                    // Màu ống xanh lá cây viền đen
+                    ctxGame.fillStyle = "#74bf2e";
+                    ctxGame.lineWidth = 3;
+                    ctxGame.strokeStyle = "black";
+
+                    // Ống trên
+                    ctxGame.fillRect(p.x, 0, this.width, p.top);
+                    ctxGame.strokeRect(p.x, 0, this.width, p.top);
+                    ctxGame.fillRect(p.x - 5, p.top - 20, this.width + 10, 20); // Mép ống
+                    ctxGame.strokeRect(p.x - 5, p.top - 20, this.width + 10, 20);
+
+                    // Ống dưới
+                    ctxGame.fillRect(p.x, gameCanvas.height - p.bottom, this.width, p.bottom);
+                    ctxGame.strokeRect(p.x, gameCanvas.height - p.bottom, this.width, p.bottom);
+                    ctxGame.fillRect(p.x - 5, gameCanvas.height - p.bottom, this.width + 10, 20); // Mép ống
+                    ctxGame.strokeRect(p.x - 5, gameCanvas.height - p.bottom, this.width + 10, 20);
+                }
+            },
+            update: function () {
+                if (frames % 100 === 0) {
+                    let minTop = 80;
+                    let maxTop = gameCanvas.height - this.gap - 80;
+                    let topH = Math.floor(Math.random() * (maxTop - minTop + 1) + minTop);
+                    let bottomH = gameCanvas.height - topH - this.gap;
+
+                    this.list.push({ x: gameCanvas.width, top: topH, bottom: bottomH, passed: false });
+                }
+
+                for (let i = 0; i < this.list.length; i++) {
+                    let p = this.list[i];
+                    p.x -= this.dx;
+
+                    if (bird.x + bird.width > p.x && bird.x < p.x + this.width) {
+                        if (bird.y < p.top || bird.y + bird.height > gameCanvas.height - p.bottom) {
+                            endGame();
+                        }
+                    }
+
+                    if (p.x + this.width < bird.x && !p.passed) {
+                        score++;
+                        scoreEl.innerText = score;
+                        p.passed = true;
+                    }
+
+                    if (p.x + this.width < 0) {
+                        this.list.shift();
+                        i--;
+                    }
+                }
+            }
+        };
+
+        function openGame() {
+            gameOverlay.classList.remove('hidden');
+            gameOverlay.classList.add('flex');
+            gameCanvas.width = gameCanvas.parentElement.clientWidth;
+            gameCanvas.height = gameCanvas.parentElement.clientHeight;
+        }
+
+        // THÊM SỰ KIỆN CHẠM MÀN HÌNH ĐỂ CHƠI TRÊN ĐIỆN THOẠI (DỰ PHÒNG NẾU AI LỖI)
+        gameCanvas.addEventListener('touchstart', (e) => {
+            if (isGameRunning) {
+                bird.flap();
+                e.preventDefault();
+            }
+        });
+        gameCanvas.addEventListener('mousedown', (e) => {
+            if (isGameRunning) {
+                bird.flap();
+            }
+        });
+
+        function closeGame() {
+            gameOverlay.classList.add('hidden');
+            gameOverlay.classList.remove('flex');
+            isGameRunning = false;
+            cancelAnimationFrame(animationId);
+        }
+
+        function startGame() {
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            gameCanvas.width = gameCanvas.parentElement.clientWidth;
+            gameCanvas.height = gameCanvas.parentElement.clientHeight;
+            bird.y = gameCanvas.height / 2;
+            bird.velocity = 0;
+            pipes.list = [];
+            score = 0;
+            scoreEl.innerText = score;
+            frames = 0;
+            isGameRunning = true;
+            gameLoop();
+        }
+
+        function resetGame() { startGame(); }
+
+        function endGame() {
+            isGameRunning = false;
+            document.getElementById('final-score').innerText = score;
+            gameOverScreen.classList.remove('hidden');
+            gameOverScreen.classList.add('flex');
+        }
+
+        function drawBackground() {
+            ctxGame.fillStyle = "#70c5ce"; // Màu trời xanh
+            ctxGame.fillRect(0, 0, gameCanvas.width, gameCanvas.height);
+            // Có thể thêm mây hoặc nhà mờ mờ ở đây
+        }
+
+        function gameLoop() {
+            if (!isGameRunning) return;
+            ctxGame.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
+
+            drawBackground();
+            pipes.draw();
+            pipes.update();
+            bird.draw();
+            bird.update();
+
+            frames++;
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        let faceMesh;
+        let aiReady = false;
+
+        async function initFaceMesh() {
+            faceMesh = new FaceMesh({
+                locateFile: (file) => {
+                    return \`https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/\${file}\`;
+                }
+            });
+
+            faceMesh.setOptions({
+                maxNumFaces: 1,
+                refineLandmarks: true,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+
+            faceMesh.onResults(onFaceResults);
+
+            try {
+                await faceMesh.initialize();
+                aiReady = true;
+                aiLoadingText.classList.add('hidden');
+                startGameBtn.classList.remove('hidden');
+
+                // Bắt đầu vòng lặp đẩy hình ảnh Camera vào AI
+                processVideoFrame();
+            } catch (err) {
+                console.log("Lỗi khởi tạo AI:", err);
+                // Vẫn cho chơi bằng tay nếu AI lỗi
+                aiLoadingText.innerText = "Camera bị chặn. Bạn vẫn có thể chạm màn hình để chơi!";
+                startGameBtn.classList.remove('hidden');
+            }
+        }
+
+        async function processVideoFrame() {
+            if (aiReady && video.videoWidth > 0 && !video.paused) {
+                try {
+                    await faceMesh.send({ image: video });
+                } catch (e) { }
+            }
+            requestAnimationFrame(processVideoFrame);
+        }
+
+        function onFaceResults(results) {
+            // Vẽ người chơi góc nhỏ
+            if (isGameRunning && results.image) {
+                const w = 120, h = 160;
+                ctxGame.save();
+                ctxGame.globalAlpha = 0.8;
+                ctxGame.translate(gameCanvas.width, 0);
+                ctxGame.scale(-1, 1);
+                ctxGame.drawImage(results.image, 10, 10, w, h);
+
+                if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                    const landmarks = results.multiFaceLandmarks[0];
+                    const topLip = landmarks[13];
+                    const bottomLip = landmarks[14];
+
+                    // Vẽ chấm đỏ vào môi để người chơi biết AI đang nhận diện được
+                    ctxGame.fillStyle = "red";
+                    ctxGame.beginPath();
+                    ctxGame.arc(10 + topLip.x * w, 10 + topLip.y * h, 3, 0, 2 * Math.PI);
+                    ctxGame.arc(10 + bottomLip.x * w, 10 + bottomLip.y * h, 3, 0, 2 * Math.PI);
+                    ctxGame.fill();
+
+                    const mouthDistance = bottomLip.y - topLip.y;
+
+                    // Đã hạ ngưỡng từ 0.04 xuống 0.02 để nhạy hơn (há miệng nhỏ cũng bay)
+                    if (mouthDistance > 0.02) {
+                        if (!isMouthOpen && isGameRunning) {
+                            bird.flap();
+                            isMouthOpen = true;
+                        }
+                    } else {
+                        isMouthOpen = false;
+                    }
+                }
+
+                // Vẽ khung viền trắng
+                ctxGame.lineWidth = 3;
+                ctxGame.strokeStyle = "white";
+                ctxGame.strokeRect(10, 10, w, h);
+                ctxGame.restore();
+            }
+        }
+
+        // ==========================================
+        // KHỞI CHẠY APP
+        // ==========================================
+        window.onload = () => {
+            initCamera().then(() => {
+                initFaceMesh();
+            });
+            checkAuth(); // Kiểm tra đăng nhập và tải bài viết
+        };
+    </script>
+</body>
+
+</html>`;
+
+app.get('/', (req, res) => {
+    res.send(HTML_CONTENT);
+});
