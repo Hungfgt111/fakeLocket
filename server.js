@@ -132,40 +132,100 @@ app.delete('/api/posts/:id', (req, res) => {
 });
 
 // ==========================================
-// API USER & BẠN BÈ
+// API USER & BẠN BÈ (HỆ THỐNG LỜI MỜI)
 // ==========================================
+
+// Lời mời kết bạn đang chờ xử lý
+// Cấu trúc: [{ from: "nam", to: "nu", timestamp }]
+let friendRequests = [];
 
 // Đăng nhập / Khởi tạo User
 app.post('/api/users/login', (req, res) => {
     const { username } = req.body;
     if (!username) return res.status(400).json({ success: false, message: 'Thiếu tên hiển thị' });
     
-    // Nếu chưa có user thì tạo mới
     if (!users[username]) {
         users[username] = { friends: [] };
         console.log(`[USER] Tạo mới: ${username}`);
     }
-    res.json({ success: true, username, friends: users[username].friends });
+    
+    // Đếm số lời mời đang chờ
+    const pendingCount = friendRequests.filter(r => r.to === username).length;
+    res.json({ success: true, username, friends: users[username].friends, pendingCount });
 });
 
-// Thêm bạn bè
-app.post('/api/users/friend', (req, res) => {
-    const { username, friendName } = req.body;
+// Gửi lời mời kết bạn
+app.post('/api/users/friend/request', (req, res) => {
+    const { username, friendName, message } = req.body;
     
     if (!users[username]) return res.status(404).json({ success: false, message: "Bạn chưa đăng nhập!" });
     if (!users[friendName]) return res.status(404).json({ success: false, message: "Không tìm thấy người này (họ chưa từng mở ứng dụng)" });
     if (username === friendName) return res.status(400).json({ success: false, message: "Không thể tự kết bạn với chính mình" });
     
-    // Kết bạn 2 chiều
-    if (!users[username].friends.includes(friendName)) {
-        users[username].friends.push(friendName);
-    }
-    if (!users[friendName].friends.includes(username)) {
-        users[friendName].friends.push(username);
+    // Kiểm tra đã là bạn bè chưa
+    if (users[username].friends.includes(friendName)) {
+        return res.status(400).json({ success: false, message: `Bạn và ${friendName} đã là bạn bè rồi!` });
     }
     
-    console.log(`[FRIEND] ${username} và ${friendName} đã thành bạn bè`);
-    res.json({ success: true, message: `Đã kết bạn với ${friendName}!`, friends: users[username].friends });
+    // Kiểm tra đã gửi lời mời trước đó chưa
+    const existingRequest = friendRequests.find(r => r.from === username && r.to === friendName);
+    if (existingRequest) {
+        return res.status(400).json({ success: false, message: "Bạn đã gửi lời mời rồi, hãy đợi họ chấp nhận!" });
+    }
+    
+    // Kiểm tra nếu đối phương đã gửi lời mời cho mình → tự động chấp nhận
+    const reverseRequest = friendRequests.find(r => r.from === friendName && r.to === username);
+    if (reverseRequest) {
+        // Chấp nhận luôn
+        friendRequests = friendRequests.filter(r => !(r.from === friendName && r.to === username));
+        if (!users[username].friends.includes(friendName)) users[username].friends.push(friendName);
+        if (!users[friendName].friends.includes(username)) users[friendName].friends.push(username);
+        console.log(`[FRIEND] ${username} và ${friendName} đã thành bạn bè (tự động chấp nhận lời mời ngược)`);
+        return res.json({ success: true, message: `${friendName} cũng đã gửi lời mời cho bạn. Hai bạn giờ là bạn bè!`, friends: users[username].friends });
+    }
+    
+    friendRequests.push({ from: username, to: friendName, message: message || '', timestamp: Date.now() });
+    console.log(`[REQUEST] ${username} gửi lời mời kết bạn tới ${friendName} với lời nhắn: "${message || ''}"`);
+    res.json({ success: true, message: `Đã gửi lời mời kết bạn tới ${friendName}! Đợi họ chấp nhận nhé.` });
+});
+
+// Lấy danh sách lời mời đang chờ (người khác gửi cho mình)
+app.get('/api/users/:username/requests', (req, res) => {
+    const { username } = req.params;
+    const pending = friendRequests.filter(r => r.to === username).map(r => ({
+        from: r.from,
+        message: r.message || '',
+        timestamp: r.timestamp
+    }));
+    res.json({ success: true, requests: pending });
+});
+
+// Chấp nhận lời mời kết bạn
+app.post('/api/users/friend/accept', (req, res) => {
+    const { username, fromUser } = req.body;
+    
+    const reqIndex = friendRequests.findIndex(r => r.from === fromUser && r.to === username);
+    if (reqIndex === -1) {
+        return res.status(404).json({ success: false, message: "Không tìm thấy lời mời này!" });
+    }
+    
+    // Xóa lời mời và thêm bạn bè 2 chiều
+    friendRequests.splice(reqIndex, 1);
+    if (!users[username].friends.includes(fromUser)) users[username].friends.push(fromUser);
+    if (users[fromUser] && !users[fromUser].friends.includes(username)) users[fromUser].friends.push(username);
+    
+    console.log(`[ACCEPT] ${username} chấp nhận lời mời từ ${fromUser}`);
+    res.json({ success: true, message: `Đã chấp nhận! Bạn và ${fromUser} giờ là bạn bè.`, friends: users[username].friends });
+});
+
+// Từ chối lời mời kết bạn
+app.post('/api/users/friend/reject', (req, res) => {
+    const { username, fromUser } = req.body;
+    
+    friendRequests = friendRequests.filter(r => !(r.from === fromUser && r.to === username));
+    
+    console.log(`[REJECT] ${username} từ chối lời mời từ ${fromUser}`);
+    res.json({ success: true, message: `Đã từ chối lời mời từ ${fromUser}.` });
 });
 
 // Lấy danh sách bạn bè

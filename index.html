@@ -48,13 +48,14 @@
     <!-- HEADER -->
     <header
         class="fixed top-0 left-0 right-0 z-50 bg-dark/90 backdrop-blur-md p-4 flex justify-between items-center border-b border-gray-800">
-        <!-- Nút Bạn Bè -->
-        <button onclick="openFriends()" class="text-white hover:text-brand transition">
+        <!-- Nút Bạn Bè (có badge thông báo) -->
+        <button onclick="openFriends()" class="text-white hover:text-brand transition relative">
             <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z">
                 </path>
             </svg>
+            <span id="friend-badge" class="hidden absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-xs font-bold flex items-center justify-center text-white">0</span>
         </button>
         <h1 id="app-logo" onclick="handleLogoClick()"
             class="text-2xl font-bold text-brand tracking-wider select-none cursor-pointer">MOMENTS</h1>
@@ -174,8 +175,8 @@
     </div>
 
     <!-- MODAL BẠN BÈ -->
-    <div id="friends-modal" class="fixed inset-0 z-[70] bg-darker hidden flex-col p-6 pt-12">
-        <div class="flex justify-between items-center mb-8">
+    <div id="friends-modal" class="fixed inset-0 z-[70] bg-darker hidden flex-col p-6 pt-12 overflow-y-auto">
+        <div class="flex justify-between items-center mb-6">
             <div>
                 <h2 class="text-3xl font-black text-brand">BẠN BÈ</h2>
                 <p class="text-gray-400 text-sm mt-1">Xin chào, <span id="current-user-display"
@@ -189,18 +190,73 @@
             </button>
         </div>
 
-        <div class="flex space-x-2 mb-8">
-            <input type="text" id="friend-input" placeholder="Nhập tên bạn bè..."
-                class="flex-1 bg-gray-800 text-white rounded-xl px-4 py-3 outline-none border border-gray-700 focus:border-brand transition">
-            <button onclick="addFriend()"
-                class="px-6 bg-brand text-black rounded-xl font-bold hover:bg-yellow-500 active:scale-95 transition">KẾT
-                BẠN</button>
+        <!-- KHU VỰC CHIA SẺ LINK & QR CODE KẾT BẠN -->
+        <div class="bg-gray-900/90 border border-gray-800 p-4 rounded-2xl mb-6 flex flex-col items-center text-center shadow-lg">
+            <h3 class="text-xs font-black text-brand uppercase tracking-widest mb-3">Mã QR & Link Kết Bạn Của Tôi</h3>
+            
+            <!-- Ảnh QR Code -->
+            <div class="p-3 bg-white rounded-xl mb-3 aspect-square w-36 flex items-center justify-center shadow-inner">
+                <img id="my-qr-image" src="" alt="Mã QR kết bạn" class="w-full h-full object-contain">
+            </div>
+            
+            <p class="text-xs text-gray-400 mb-3 px-2">Để người khác quét mã này hoặc bấm link dưới để kết bạn ngay lập tức!</p>
+            
+            <div class="w-full flex items-center space-x-2 bg-gray-800 p-1.5 rounded-xl border border-gray-700">
+                <input type="text" id="share-link-input" readonly
+                    class="flex-1 bg-transparent text-gray-300 text-xs px-2 outline-none cursor-default truncate">
+                <button onclick="copyShareLink()" class="px-4 py-2 bg-brand text-black rounded-lg text-xs font-bold hover:bg-yellow-500 active:scale-95 transition shrink-0">
+                    Sao chép
+                </button>
+            </div>
+        </div>
+
+        <!-- GỬI LỜI MỜI KẾT BẠN -->
+        <div class="flex flex-col space-y-2 mb-6 bg-gray-900/50 p-4 rounded-2xl border border-gray-800">
+            <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider">Gửi Lời Mời Kết Bạn</h3>
+            <div class="flex space-x-2">
+                <input type="text" id="friend-input" placeholder="Nhập tên tài khoản..."
+                    class="flex-1 bg-gray-800 text-white rounded-xl px-4 py-3 outline-none border border-gray-700 focus:border-brand transition text-sm">
+                <button onclick="sendFriendRequest()"
+                    class="px-5 bg-brand text-black rounded-xl font-bold hover:bg-yellow-500 active:scale-95 transition text-sm">GỬI</button>
+            </div>
+            <input type="text" id="friend-message-input" placeholder="Nhập lời nhắn gửi kèm (không bắt buộc)..."
+                class="w-full bg-gray-800 text-white rounded-xl px-4 py-2.5 outline-none border border-gray-700 focus:border-brand transition text-sm">
+        </div>
+
+        <!-- LỜi mời đang chờ -->
+        <h3 class="text-gray-400 font-bold mb-4">LỜI MỜI KẾT BẠN (<span id="request-count">0</span>)</h3>
+        <div id="requests-list" class="space-y-3 mb-8">
+            <p class="text-gray-600 text-sm italic">Không có lời mời nào.</p>
         </div>
 
         <h3 class="text-gray-400 font-bold mb-4">DANH SÁCH BẠN BÈ (<span id="friend-count">0</span>)</h3>
-        <div id="friends-list" class="space-y-3 overflow-y-auto pb-10">
-            <!-- Danh sách bạn bè chèn vào đây -->
+        <div id="friends-list" class="space-y-3 pb-10">
             <p class="text-gray-600 text-sm italic">Bạn chưa kết bạn với ai cả...</p>
+        </div>
+    </div>
+
+    <!-- MODAL GỬI KẾT BẠN QUA LINK -->
+    <div id="add-friend-url-modal" class="fixed inset-0 z-[100] bg-black/95 hidden flex-col items-center justify-center p-6">
+        <div class="bg-gray-900 w-full max-w-sm rounded-3xl p-6 border border-gray-800 flex flex-col items-center text-center">
+            <div class="w-16 h-16 bg-brand rounded-full flex items-center justify-center font-black text-black text-3xl uppercase mb-4 shadow-[0_0_15px_rgba(255,176,0,0.3)]">
+                <span id="url-friend-avatar">?</span>
+            </div>
+            
+            <h2 class="text-2xl font-black text-white mb-1">Kết Bạn Với <span id="url-friend-name" class="text-brand"></span></h2>
+            <p class="text-xs text-gray-400 mb-6">Bạn được chia sẻ link kết bạn trực tiếp từ người này</p>
+            
+            <div class="w-full space-y-4 mb-6">
+                <div>
+                    <label class="block text-left text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Lời nhắn gửi kèm</label>
+                    <textarea id="url-friend-message" rows="3" placeholder="Ví dụ: Chào bạn, mình là..." 
+                        class="w-full bg-gray-800 text-white rounded-xl p-3 outline-none border border-gray-700 focus:border-brand transition text-sm resize-none"></textarea>
+                </div>
+            </div>
+            
+            <div class="flex space-x-3 w-full">
+                <button onclick="closeUrlFriendModal()" class="flex-1 py-3 bg-gray-800 hover:bg-gray-750 rounded-xl font-bold text-sm text-gray-300 transition active:scale-95">Đóng</button>
+                <button onclick="submitUrlFriendRequest()" class="flex-1 py-3 bg-brand text-black rounded-xl font-bold text-sm hover:bg-yellow-500 transition active:scale-95 shadow-md">Gửi Yêu Cầu</button>
+            </div>
         </div>
     </div>
 
@@ -476,6 +532,12 @@
                     currentUser = input;
                     localStorage.setItem('locket_username', input);
                     document.getElementById('login-modal').classList.add('hidden');
+                    
+                    // Nếu đang có yêu cầu kết bạn chờ sẵn từ URL
+                    if (pendingAddFriendFromUrl) {
+                        showUrlFriendModal(pendingAddFriendFromUrl);
+                    }
+                    
                     loadPosts();
                 }
             } catch (err) {
@@ -487,13 +549,33 @@
             document.getElementById('friends-modal').classList.remove('hidden');
             document.getElementById('friends-modal').classList.add('flex');
             document.getElementById('current-user-display').innerText = currentUser;
+
+            // Tạo link chia sẻ và ảnh QR Code
+            const shareUrl = window.location.origin + window.location.pathname + '?add-friend=' + encodeURIComponent(currentUser);
+            document.getElementById('share-link-input').value = shareUrl;
+            
+            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(shareUrl)}`;
+            document.getElementById('my-qr-image').src = qrUrl;
+
             loadFriends();
+            loadFriendRequests();
         }
 
         function closeFriends() {
             document.getElementById('friends-modal').classList.add('hidden');
             document.getElementById('friends-modal').classList.remove('flex');
-            loadPosts(); // Tải lại bảng tin vì có thể đã thêm bạn mới
+            loadPosts();
+        }
+
+        function copyShareLink() {
+            const shareInput = document.getElementById('share-link-input');
+            shareInput.select();
+            shareInput.setSelectionRange(0, 99999); // Cho thiết bị di động
+            navigator.clipboard.writeText(shareInput.value).then(() => {
+                alert("Đã sao chép link kết bạn vào Clipboard!");
+            }).catch(() => {
+                alert("Không thể tự động sao chép. Hãy tự bôi đen và sao chép link nhé!");
+            });
         }
 
         async function loadFriends() {
@@ -518,25 +600,165 @@
             } catch (err) { }
         }
 
-        async function addFriend() {
-            const friendName = document.getElementById('friend-input').value.trim();
-            if (!friendName) return;
+        async function loadFriendRequests() {
+            try {
+                const res = await fetch(`${API_URL}/users/${currentUser}/requests`);
+                const data = await res.json();
+                if (data.success) {
+                    const listEl = document.getElementById('requests-list');
+                    const badge = document.getElementById('friend-badge');
+                    document.getElementById('request-count').innerText = data.requests.length;
+
+                    // Cập nhật badge thông báo
+                    if (data.requests.length > 0) {
+                        badge.classList.remove('hidden');
+                        badge.classList.add('flex');
+                        badge.innerText = data.requests.length;
+                    } else {
+                        badge.classList.add('hidden');
+                        badge.classList.remove('flex');
+                    }
+
+                    if (data.requests.length === 0) {
+                        listEl.innerHTML = '<p class="text-gray-600 text-sm italic">Không có lời mời nào.</p>';
+                    } else {
+                        listEl.innerHTML = data.requests.map(r => `
+                            <div class="bg-gray-800 p-4 rounded-xl flex flex-col space-y-3 shadow">
+                                <div class="flex justify-between items-center">
+                                    <div class="flex items-center space-x-3">
+                                        <div class="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center font-bold text-black text-xl uppercase">${r.from.charAt(0)}</div>
+                                        <div>
+                                            <span class="text-white font-bold">${r.from}</span>
+                                            <p class="text-gray-400 text-xs">Muốn kết bạn với bạn</p>
+                                        </div>
+                                    </div>
+                                    <div class="flex space-x-2">
+                                        <button onclick="acceptRequest('${r.from}')" class="px-3 py-2 bg-green-600 text-white rounded-lg font-bold hover:bg-green-500 active:scale-95 transition text-sm">✅ Chấp nhận</button>
+                                        <button onclick="rejectRequest('${r.from}')" class="px-3 py-2 bg-red-600/20 text-red-400 rounded-lg font-bold hover:bg-red-600 hover:text-white active:scale-95 transition text-sm">❌</button>
+                                    </div>
+                                </div>
+                                ${r.message ? `
+                                    <div class="bg-gray-900/60 p-3 rounded-lg border border-gray-700/50">
+                                        <p class="text-gray-300 text-sm italic">💬 "${r.message}"</p>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        `).join('');
+                    }
+                }
+            } catch (err) { }
+        }
+
+        async function sendFriendRequest(customFriendName = null, customMessage = null) {
+            const friendName = customFriendName || document.getElementById('friend-input').value.trim();
+            const message = customMessage !== null ? customMessage : document.getElementById('friend-message-input').value.trim();
+            if (!friendName) return alert("Vui lòng nhập tên tài khoản muốn kết bạn!");
+            if (friendName === currentUser) return alert("Không thể tự kết bạn với chính mình!");
 
             try {
-                const res = await fetch(`${API_URL}/users/friend`, {
+                const res = await fetch(`${API_URL}/users/friend/request`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: currentUser, friendName })
+                    body: JSON.stringify({ username: currentUser, friendName, message })
+                });
+                const data = await res.json();
+                alert(data.message);
+                if (data.success) {
+                    if (!customFriendName) {
+                        document.getElementById('friend-input').value = '';
+                        document.getElementById('friend-message-input').value = '';
+                    }
+                    loadFriends(); // Tải lại nếu đã tự động chấp nhận
+                }
+            } catch (err) {
+                alert("Lỗi kết nối tới máy chủ!");
+            }
+        }
+
+        // --- LOGIC KẾT BẠN QUA URL/QR ---
+        let pendingAddFriendFromUrl = null;
+
+        function handleAddFriendUrlParam() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const addFriendParam = urlParams.get('add-friend');
+            if (addFriendParam) {
+                // Xóa tham số khỏi URL để sạch sẽ thanh địa chỉ
+                const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+                window.history.replaceState({ path: newUrl }, '', newUrl);
+
+                if (addFriendParam === currentUser) {
+                    alert("Bạn không thể tự kết bạn với chính mình!");
+                    return;
+                }
+
+                pendingAddFriendFromUrl = addFriendParam;
+                
+                if (!currentUser) {
+                    alert(`Vui lòng đăng nhập để gửi lời mời kết bạn tới "${addFriendParam}"!`);
+                    document.getElementById('login-modal').classList.remove('hidden');
+                } else {
+                    showUrlFriendModal(addFriendParam);
+                }
+            }
+        }
+
+        function showUrlFriendModal(friendName) {
+            document.getElementById('url-friend-name').innerText = friendName;
+            document.getElementById('url-friend-avatar').innerText = friendName.charAt(0);
+            document.getElementById('url-friend-message').value = `Chào bạn, mình là ${currentUser}! Kết bạn với mình nhé.`;
+            document.getElementById('add-friend-url-modal').classList.remove('hidden');
+            document.getElementById('add-friend-url-modal').classList.add('flex');
+        }
+
+        function closeUrlFriendModal() {
+            document.getElementById('add-friend-url-modal').classList.add('hidden');
+            document.getElementById('add-friend-url-modal').classList.remove('flex');
+            pendingAddFriendFromUrl = null;
+        }
+
+        async function submitUrlFriendRequest() {
+            if (!currentUser || !pendingAddFriendFromUrl) return;
+            const message = document.getElementById('url-friend-message').value.trim();
+            await sendFriendRequest(pendingAddFriendFromUrl, message);
+            closeUrlFriendModal();
+        }
+        // --- KẾT THÚC LOGIC KẾT BẠN QUA URL/QR ---
+
+        async function acceptRequest(fromUser) {
+            try {
+                const res = await fetch(`${API_URL}/users/friend/accept`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: currentUser, fromUser })
                 });
                 const data = await res.json();
                 if (data.success) {
-                    document.getElementById('friend-input').value = '';
                     loadFriends();
+                    loadFriendRequests();
                 } else {
                     alert(data.message);
                 }
             } catch (err) { }
         }
+
+        async function rejectRequest(fromUser) {
+            try {
+                const res = await fetch(`${API_URL}/users/friend/reject`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: currentUser, fromUser })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    loadFriendRequests();
+                }
+            } catch (err) { }
+        }
+
+        // Kiểm tra lời mời mới mỗi 10 giây
+        setInterval(() => {
+            if (currentUser) loadFriendRequests();
+        }, 10000);
 
         // ==========================================
         // 3. LOGIC TƯƠNG TÁC SERVER (FETCH API)
@@ -1031,6 +1253,7 @@
                 initFaceMesh();
             });
             checkAuth(); // Kiểm tra đăng nhập và tải bài viết
+            setTimeout(handleAddFriendUrlParam, 500); // Tự động xử lý kết bạn qua link sau khi load
         };
     </script>
 </body>
