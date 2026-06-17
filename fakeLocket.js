@@ -112,6 +112,26 @@ app.post('/api/posts/:id/comment', (req, res) => {
     res.json({ success: true, comment: newComment });
 });
 
+// 5. Xóa bài viết (DELETE /api/posts/:id)
+app.delete('/api/posts/:id', (req, res) => {
+    const postId = req.params.id;
+    const { username } = req.query; // Xác nhận xem ai là người đang yêu cầu xóa
+
+    const postIndex = posts.findIndex(p => p.id === postId);
+    if (postIndex === -1) {
+        return res.status(404).json({ success: false, message: 'Không tìm thấy bài viết!' });
+    }
+
+    // Chỉ người đăng bài mới được xóa
+    if (posts[postIndex].author !== username) {
+        return res.status(403).json({ success: false, message: 'Bạn không có quyền xóa ảnh của người khác!' });
+    }
+
+    posts.splice(postIndex, 1);
+    console.log(`[DEL] ${username} đã gỡ bài viết ${postId}`);
+    res.json({ success: true, message: 'Đã gỡ bài viết!' });
+});
+
 // ==========================================
 // API USER & BẠN BÈ
 // ==========================================
@@ -154,6 +174,42 @@ app.get('/api/users/:username/friends', (req, res) => {
     const { username } = req.params;
     if (!users[username]) return res.json({ success: true, friends: [] });
     res.json({ success: true, friends: users[username].friends });
+});
+
+// ==========================================
+// API ADMIN QUẢN LÝ
+// ==========================================
+
+// Lấy danh sách tất cả user
+app.get('/api/admin/users', (req, res) => {
+    const userList = Object.keys(users).map(username => {
+        return {
+            username: username,
+            friendCount: users[username].friends.length,
+            postCount: posts.filter(p => p.author === username).length
+        };
+    });
+    res.json({ success: true, users: userList });
+});
+
+// Xóa một user
+app.delete('/api/admin/users/:username', (req, res) => {
+    const { username } = req.params;
+    if (!users[username]) return res.status(404).json({ success: false, message: 'User không tồn tại!' });
+    
+    // Xóa user khỏi db
+    delete users[username];
+    
+    // Xóa user khỏi danh sách bạn bè của người khác
+    Object.keys(users).forEach(u => {
+        users[u].friends = users[u].friends.filter(f => f !== username);
+    });
+    
+    // Xóa toàn bộ bài đăng của user
+    posts = posts.filter(p => p.author !== username);
+    
+    console.log(`[ADMIN] Đã xóa toàn bộ dữ liệu của người dùng: ${username}`);
+    res.json({ success: true, message: `Đã xóa ${username} thành công!` });
 });
 
 // Khởi chạy Server
@@ -218,9 +274,13 @@ const HTML_CONTENT = `<!DOCTYPE html>
         class="fixed top-0 left-0 right-0 z-50 bg-dark/90 backdrop-blur-md p-4 flex justify-between items-center border-b border-gray-800">
         <!-- Nút Bạn Bè -->
         <button onclick="openFriends()" class="text-white hover:text-brand transition">
-            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z">
+                </path>
+            </svg>
         </button>
-        <h1 class="text-2xl font-bold text-brand tracking-wider">MOMENTS</h1>
+        <h1 id="app-logo" onclick="handleLogoClick()" class="text-2xl font-bold text-brand tracking-wider select-none cursor-pointer">MOMENTS</h1>
         <!-- Nút Trò chơi Flappy Bird -->
         <button onclick="openGame()" class="text-brand hover:text-white transition">
             <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -307,8 +367,32 @@ const HTML_CONTENT = `<!DOCTYPE html>
     <div id="login-modal" class="fixed inset-0 z-[80] bg-darker flex flex-col items-center justify-center p-6 hidden">
         <h2 class="text-4xl font-black text-brand mb-2">ĐĂNG NHẬP</h2>
         <p class="text-center text-gray-400 mb-8">Nhập một cái tên ngầu ngầu để bạn bè nhận ra bạn nhé!</p>
-        <input type="text" id="username-input" placeholder="Ví dụ: Nam, Nữ, ..." class="w-full max-w-sm bg-gray-800 text-white rounded-2xl px-6 py-4 outline-none border border-gray-700 focus:border-brand transition text-center mb-4 text-2xl font-bold">
-        <button onclick="loginUser()" class="w-full max-w-sm py-4 bg-brand text-black rounded-2xl font-black text-xl hover:bg-yellow-500 active:scale-95 transition-transform">VÀO APP</button>
+        <input type="text" id="username-input" placeholder="Ví dụ: Nam, Nữ, ..."
+            class="w-full max-w-sm bg-gray-800 text-white rounded-2xl px-6 py-4 outline-none border border-gray-700 focus:border-brand transition text-center mb-4 text-2xl font-bold">
+        <button onclick="loginUser()"
+            class="w-full max-w-sm py-4 bg-brand text-black rounded-2xl font-black text-xl hover:bg-yellow-500 active:scale-95 transition-transform">VÀO
+            APP</button>
+    </div>
+
+    <!-- MODAL QUẢN TRỊ VIÊN (ADMIN) -->
+    <div id="admin-modal" class="fixed inset-0 z-[90] bg-darker hidden flex-col p-6 pt-12">
+        <div class="flex justify-between items-center mb-8">
+            <div>
+                <h2 class="text-3xl font-black text-red-500">TƯỜNG ADMIN</h2>
+                <p class="text-gray-400 text-sm mt-1">Khu vực tuyệt mật!</p>
+            </div>
+            <button onclick="closeAdmin()" class="p-3 bg-gray-800 rounded-full text-white active:scale-95 transition">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+        </div>
+        
+        <h3 class="text-gray-400 font-bold mb-4">DANH SÁCH THÀNH VIÊN (<span id="admin-user-count">0</span>)</h3>
+        <div id="admin-users-list" class="space-y-3 overflow-y-auto pb-10">
+            <!-- Danh sách user chèn vào đây -->
+            <p class="text-gray-600 text-sm italic">Đang tải...</p>
+        </div>
     </div>
 
     <!-- MODAL BẠN BÈ -->
@@ -316,18 +400,25 @@ const HTML_CONTENT = `<!DOCTYPE html>
         <div class="flex justify-between items-center mb-8">
             <div>
                 <h2 class="text-3xl font-black text-brand">BẠN BÈ</h2>
-                <p class="text-gray-400 text-sm mt-1">Xin chào, <span id="current-user-display" class="font-bold text-white"></span></p>
+                <p class="text-gray-400 text-sm mt-1">Xin chào, <span id="current-user-display"
+                        class="font-bold text-white"></span></p>
             </div>
             <button onclick="closeFriends()" class="p-3 bg-gray-800 rounded-full text-white active:scale-95 transition">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
+                    </path>
+                </svg>
             </button>
         </div>
-        
+
         <div class="flex space-x-2 mb-8">
-            <input type="text" id="friend-input" placeholder="Nhập tên bạn bè..." class="flex-1 bg-gray-800 text-white rounded-xl px-4 py-3 outline-none border border-gray-700 focus:border-brand transition">
-            <button onclick="addFriend()" class="px-6 bg-brand text-black rounded-xl font-bold hover:bg-yellow-500 active:scale-95 transition">KẾT BẠN</button>
+            <input type="text" id="friend-input" placeholder="Nhập tên bạn bè..."
+                class="flex-1 bg-gray-800 text-white rounded-xl px-4 py-3 outline-none border border-gray-700 focus:border-brand transition">
+            <button onclick="addFriend()"
+                class="px-6 bg-brand text-black rounded-xl font-bold hover:bg-yellow-500 active:scale-95 transition">KẾT
+                BẠN</button>
         </div>
-        
+
         <h3 class="text-gray-400 font-bold mb-4">DANH SÁCH BẠN BÈ (<span id="friend-count">0</span>)</h3>
         <div id="friends-list" class="space-y-3 overflow-y-auto pb-10">
             <!-- Danh sách bạn bè chèn vào đây -->
@@ -493,9 +584,92 @@ const HTML_CONTENT = `<!DOCTYPE html>
         }
 
         // ==========================================
-        // 2. LOGIC ĐĂNG NHẬP VÀ BẠN BÈ
+        // 2. LOGIC ĐĂNG NHẬP, BẠN BÈ VÀ ADMIN
         // ==========================================
         
+        // --- ADMIN LOGIC ---
+        let logoClickCount = 0;
+        let logoClickTimer;
+
+        function handleLogoClick() {
+            logoClickCount++;
+            clearTimeout(logoClickTimer);
+            
+            if (logoClickCount === 3) {
+                openAdmin();
+                logoClickCount = 0;
+            } else {
+                logoClickTimer = setTimeout(() => {
+                    logoClickCount = 0;
+                }, 1000); // Reset nếu không click liên tục trong 1 giây
+            }
+        }
+
+        function openAdmin() {
+            document.getElementById('admin-modal').classList.remove('hidden');
+            document.getElementById('admin-modal').classList.add('flex');
+            loadAdminUsers();
+        }
+
+        function closeAdmin() {
+            document.getElementById('admin-modal').classList.add('hidden');
+            document.getElementById('admin-modal').classList.remove('flex');
+            loadPosts();
+        }
+
+        async function loadAdminUsers() {
+            try {
+                const res = await fetch(\`\${API_URL}/admin/users\`);
+                const data = await res.json();
+                if (data.success) {
+                    const listEl = document.getElementById('admin-users-list');
+                    document.getElementById('admin-user-count').innerText = data.users.length;
+                    
+                    if (data.users.length === 0) {
+                        listEl.innerHTML = '<p class="text-gray-600 text-sm italic">Chưa có ai đăng ký cả...</p>';
+                    } else {
+                        listEl.innerHTML = data.users.map(u => \`
+                            <div class="bg-gray-800 p-4 rounded-xl flex justify-between items-center">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-10 h-10 bg-brand rounded-full flex items-center justify-center font-bold text-black text-xl uppercase">\${u.username.charAt(0)}</div>
+                                    <div>
+                                        <span class="text-white font-bold text-lg">\${u.username}</span>
+                                        <p class="text-gray-400 text-xs">\${u.friendCount} bạn bè • \${u.postCount} ảnh</p>
+                                    </div>
+                                </div>
+                                <button onclick="deleteUser('\${u.username}')" class="px-3 py-2 bg-red-600/20 text-red-500 rounded-lg font-bold hover:bg-red-600 hover:text-white transition">Xóa</button>
+                            </div>
+                        \`).join('');
+                    }
+                }
+            } catch (err) {
+                alert("Lỗi tải danh sách Admin!");
+            }
+        }
+
+        async function deleteUser(username) {
+            if (!confirm(\`Bạn có chắc chắn muốn xóa user "\${username}" cùng toàn bộ bài viết không?\`)) return;
+            try {
+                const res = await fetch(\`\${API_URL}/admin/users/\${username}\`, { method: 'DELETE' });
+                const data = await res.json();
+                if (data.success) {
+                    loadAdminUsers(); // Tải lại danh sách
+                    if (username === currentUser) {
+                        // Nếu tự xóa mình
+                        localStorage.removeItem('locket_username');
+                        currentUser = null;
+                        closeAdmin();
+                        checkAuth();
+                    }
+                } else {
+                    alert(data.message);
+                }
+            } catch (err) {
+                alert("Lỗi khi xóa!");
+            }
+        }
+        // --- KẾT THÚC ADMIN LOGIC ---
+
         function checkAuth() {
             if (!currentUser) {
                 document.getElementById('login-modal').classList.remove('hidden');
@@ -512,7 +686,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
         async function loginUser() {
             const input = document.getElementById('username-input').value.trim();
             if (!input) return alert("Vui lòng nhập tên!");
-            
+
             try {
                 const res = await fetch(\`\${API_URL}/users/login\`, {
                     method: 'POST',
@@ -551,7 +725,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
                 if (data.success) {
                     const listEl = document.getElementById('friends-list');
                     document.getElementById('friend-count').innerText = data.friends.length;
-                    
+
                     if (data.friends.length === 0) {
                         listEl.innerHTML = '<p class="text-gray-600 text-sm italic">Bạn chưa kết bạn với ai cả...</p>';
                     } else {
@@ -563,13 +737,13 @@ const HTML_CONTENT = `<!DOCTYPE html>
                         \`).join('');
                     }
                 }
-            } catch (err) {}
+            } catch (err) { }
         }
 
         async function addFriend() {
             const friendName = document.getElementById('friend-input').value.trim();
             if (!friendName) return;
-            
+
             try {
                 const res = await fetch(\`\${API_URL}/users/friend\`, {
                     method: 'POST',
@@ -583,7 +757,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
                 } else {
                     alert(data.message);
                 }
-            } catch (err) {}
+            } catch (err) { }
         }
 
         // ==========================================
@@ -661,6 +835,22 @@ const HTML_CONTENT = `<!DOCTYPE html>
             } catch (err) { console.error(err); }
         }
 
+        // Xóa bài viết
+        async function deletePost(postId) {
+            if (!confirm("Bạn có chắc chắn muốn gỡ khoảnh khắc này không?")) return;
+            try {
+                const res = await fetch(\`\${API_URL}/posts/\${postId}?username=\${currentUser}\`, { method: 'DELETE' });
+                const data = await res.json();
+                if (data.success) {
+                    loadPosts();
+                } else {
+                    alert(data.message);
+                }
+            } catch (err) {
+                alert("Lỗi khi xóa bài viết!");
+            }
+        }
+
         // Tải danh sách bài đăng từ Server
         async function loadPosts() {
             if (!currentUser) return;
@@ -698,16 +888,26 @@ const HTML_CONTENT = `<!DOCTYPE html>
                     \`<p class="text-sm"><span class="font-bold text-gray-400">\${c.author}:</span> \${c.text}</p>\`
                 ).join('');
 
+                // Nút Xóa (chỉ hiện nếu là bài của mình)
+                const deleteBtnHtml = post.author === currentUser 
+                    ? \`<button onclick="deletePost('\${post.id}')" class="p-2 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-full transition" title="Gỡ ảnh này">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                       </button>\` 
+                    : '';
+
                 const postHtml = \`
                     <div class="bg-gray-900 rounded-3xl p-4 shadow-lg border border-gray-800">
                         
                         <!-- Header người đăng -->
-                        <div class="flex items-center space-x-3 mb-4">
-                            <div class="w-10 h-10 bg-brand rounded-full flex items-center justify-center font-bold text-black text-xl uppercase">\${post.author.charAt(0)}</div>
-                            <div>
-                                <p class="text-white font-bold">\${post.author}</p>
-                                <span class="text-xs text-gray-500">\${timeString}</span>
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center space-x-3">
+                                <div class="w-10 h-10 bg-brand rounded-full flex items-center justify-center font-bold text-black text-xl uppercase">\${post.author.charAt(0)}</div>
+                                <div>
+                                    <p class="text-white font-bold">\${post.author}</p>
+                                    <span class="text-xs text-gray-500">\${timeString}</span>
+                                </div>
                             </div>
+                            \${deleteBtnHtml}
                         </div>
 
                         <!-- Ảnh đại diện bài viết -->

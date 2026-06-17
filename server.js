@@ -111,6 +111,26 @@ app.post('/api/posts/:id/comment', (req, res) => {
     res.json({ success: true, comment: newComment });
 });
 
+// 5. Xóa bài viết (DELETE /api/posts/:id)
+app.delete('/api/posts/:id', (req, res) => {
+    const postId = req.params.id;
+    const { username } = req.query; // Xác nhận xem ai là người đang yêu cầu xóa
+
+    const postIndex = posts.findIndex(p => p.id === postId);
+    if (postIndex === -1) {
+        return res.status(404).json({ success: false, message: 'Không tìm thấy bài viết!' });
+    }
+
+    // Chỉ người đăng bài mới được xóa
+    if (posts[postIndex].author !== username) {
+        return res.status(403).json({ success: false, message: 'Bạn không có quyền xóa ảnh của người khác!' });
+    }
+
+    posts.splice(postIndex, 1);
+    console.log(`[DEL] ${username} đã gỡ bài viết ${postId}`);
+    res.json({ success: true, message: 'Đã gỡ bài viết!' });
+});
+
 // ==========================================
 // API USER & BẠN BÈ
 // ==========================================
@@ -153,6 +173,42 @@ app.get('/api/users/:username/friends', (req, res) => {
     const { username } = req.params;
     if (!users[username]) return res.json({ success: true, friends: [] });
     res.json({ success: true, friends: users[username].friends });
+});
+
+// ==========================================
+// API ADMIN QUẢN LÝ
+// ==========================================
+
+// Lấy danh sách tất cả user
+app.get('/api/admin/users', (req, res) => {
+    const userList = Object.keys(users).map(username => {
+        return {
+            username: username,
+            friendCount: users[username].friends.length,
+            postCount: posts.filter(p => p.author === username).length
+        };
+    });
+    res.json({ success: true, users: userList });
+});
+
+// Xóa một user
+app.delete('/api/admin/users/:username', (req, res) => {
+    const { username } = req.params;
+    if (!users[username]) return res.status(404).json({ success: false, message: 'User không tồn tại!' });
+    
+    // Xóa user khỏi db
+    delete users[username];
+    
+    // Xóa user khỏi danh sách bạn bè của người khác
+    Object.keys(users).forEach(u => {
+        users[u].friends = users[u].friends.filter(f => f !== username);
+    });
+    
+    // Xóa toàn bộ bài đăng của user
+    posts = posts.filter(p => p.author !== username);
+    
+    console.log(`[ADMIN] Đã xóa toàn bộ dữ liệu của người dùng: ${username}`);
+    res.json({ success: true, message: `Đã xóa ${username} thành công!` });
 });
 
 // Khởi chạy Server
